@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#182631" />
+    <title>OpenStudy</title>
+    <link rel="icon" href="/ribbon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 12h6M9 15.5h6" /></symbol>
+      <symbol id="i-left" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6" /></symbol>
+      <symbol id="i-right" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12" /></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
+      <symbol id="i-notes" viewBox="0 0 24 24"><path d="M6 3.5h12v17H6zM9.5 8h5M9.5 12h5M9.5 16h3" /></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m5 16-1 4 4-1L19 8l-3-3L5 16ZM14.5 6.5l3 3" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M8.5 8.5a3.5 3.5 0 0 1 6.9-1M15.5 10v3l2 3H6.5l2-3v-1.5M10.5 19a2 2 0 0 0 3 0M4.5 19.5l15-15" /></symbol>
+      <symbol id="i-options" viewBox="0 0 24 24"><path d="M4 7h6m4 0h6M4 12h11m4 0h1M4 17h2m4 0h10M10 5v4m9 1v4M6 15v4" /></symbol>
+    </svg>
+
+    <main class="app">
+      <section id="launcher-screen" class="launcher" aria-label="OpenStudy">
+        <header class="app-header">
+          <div class="app-brand"><img src="/ribbon.svg" alt="" width="22" height="26" /><span>OpenStudy</span></div>
+          <button type="button" id="notification-settings" class="quiet-button"><svg class="icon" aria-hidden="true"><use href="#i-bell" /></svg><span>Notification settings</span></button>
+        </header>
+
+        <div class="launcher-content">
+          <div class="desk">
+            <div class="desk-copy">
+              <h1>Choose what<br class="desktop-break" /> to read.</h1>
+              <p>Open a PDF or EPUB and settle into a fullscreen reading session.</p>
+              <button type="button" id="choose-file" class="button button-primary"><svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>Choose a file</button>
+            </div>
+            <div class="desk-art" aria-hidden="true">
+              <svg class="book-drawing" viewBox="0 0 440 330" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M35 49h19m-9-9v18m343 230h19m-9-9v18" stroke="#627582" />
+                <path d="M37 248 168 282l49-20 47 17 145-32-1 8-146 40-45-15-48 19L36 260z" fill="#111d27" />
+                <path d="M69 131 182 115l40 34 40-37 110 16 32 121-140 34-43-22-49 22-137-32z" fill="#314652" stroke="#71828a" stroke-width="1.4" />
+                <path d="M48 239 174 267l47-21 43 20 127-27-23-117-103-19-44 31-43-28-107 16z" fill="#bdc4bc" stroke="#161f25" stroke-width="1.4" />
+                <path d="M48 239v10l126 29 47-20 43 19 127-30v-8M51 244l123 29 47-21 43 19 124-28" stroke="#182631" stroke-opacity=".62" stroke-width="1.2" />
+                <path d="M48 239c35-6 86-7 126 28 11-9 28-18 47-21-3-36-3-72 0-112-17-16-30-25-43-28-33-13-81-6-107 16z" fill="#d8dcd2" stroke="#182631" stroke-width="1.4" />
+                <path d="M221 134c15-17 32-26 44-31 38-13 74-4 103 19l23 117c-41-7-84-2-127 27-10-10-27-18-43-20-3-36-3-72 0-112Z" fill="#eef0e8" stroke="#182631" stroke-width="1.4" />
+                <path d="M91 139c33-7 71-4 99 15m-103 2c34-7 73-4 102 15m-106 2c32-5 71-4 104 17m-109 1c34-6 76-2 107 17m-111 1c30-5 61 0 85 10m89-65c26-18 67-25 102-17m-103 33c29-18 70-25 106-18m-105 35c28-18 67-27 108-20m-105 36c29-17 66-26 109-19m-104 35c22-14 52-23 85-23" stroke="#657374" stroke-opacity=".62" stroke-width="1.45" stroke-linecap="round" />
+                <path d="M216 242c5 8 16 14 23 17l-5 43-8-9-10 7 7-43-8-10z" fill="#c9ae7a" stroke="#5e523b" stroke-width="1.1" />
+                <path d="M224 261 220 292" stroke="#a1885b" />
+              </svg>
+            </div>
+
+            <section id="selected-document" class="session-setup" aria-labelledby="setup-heading" hidden>
+              <div id="document-preview" class="document-preview" aria-hidden="true"></div>
+              <div class="setup-body">
+                <h1 id="setup-heading">Ready to read.</h1>
+                <p id="selected-name" class="selected-name"></p>
+                <p id="selected-meta" class="selected-meta"></p>
+                <div class="session-options">
+                  <label for="session-minutes">Session length</label>
+                  <select id="session-minutes">
+                    <option value="0">No timer</option>
+                    <option value="15">15 minutes</option>
+                    <option value="25">25 minutes</option>
+                    <option value="45">45 minutes</option>
+                    <option value="60">60 minutes</option>
+                  </select>
+                </div>
+                <div class="setup-actions">
+                  <button type="button" id="start-session" class="button button-primary">Start studying</button>
+                  <button type="button" id="launcher-review-notes" class="quiet-button" hidden>Look up later</button>
+                </div>
+              </div>
+            </section>
+          </div>
+          <p id="launcher-error" class="form-error" role="alert" hidden></p>
+
+          <section class="recent" aria-labelledby="recent-heading">
+            <h2 id="recent-heading">Continue reading</h2>
+            <p id="recent-empty">Your recently opened documents will appear here.</p>
+            <ul id="recent-list" class="recent-list"></ul>
+          </section>
+        </div>
+        <footer class="app-footer"><span>PDF and EPUB</span><span>Files stay on this device</span></footer>
+      </section>
+
+      <section id="reader-screen" class="reader" aria-label="Reading session" hidden>
+        <header class="reader-toolbar" aria-label="Reader controls">
+          <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
+          <div class="reader-controls">
+            <div class="control-group" role="group" aria-label="Page navigation">
+              <button type="button" id="previous-page" class="icon-button" title="Previous page" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></button>
+              <output id="reader-location" class="reader-location" aria-live="polite"></output>
+              <button type="button" id="next-page" class="icon-button" title="Next page" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#i-right" /></svg></button>
+            </div>
+            <div class="control-group zoom-controls" role="group" aria-label="Reading size">
+              <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><svg class="icon" aria-hidden="true"><use href="#i-minus" /></svg></button>
+              <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
+              <button type="button" id="zoom-in" class="icon-button" title="Increase reading size" aria-label="Increase reading size"><svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg></button>
+            </div>
+            <div class="control-group note-controls" role="group" aria-label="Notes">
+              <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><svg class="icon" aria-hidden="true"><use href="#i-pencil" /></svg></button>
+              <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><svg class="icon" aria-hidden="true"><use href="#i-notes" /></svg></button>
+            </div>
+            <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><svg class="icon" aria-hidden="true"><use href="#i-options" /></svg></button>
+          </div>
+          <div class="reader-actions">
+            <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
+            <button type="button" id="take-break" class="button button-outline"><svg class="icon" aria-hidden="true"><use href="#i-pause" /></svg><span>Take a break</span></button>
+            <button type="button" id="end-session" class="quiet-button">End session</button>
+          </div>
+        </header>
+        <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
+        <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
+      </section>
+
+      <section id="break-screen" class="break" aria-labelledby="break-heading" hidden>
+        <header class="app-header"><div class="app-brand"><img src="/ribbon.svg" alt="" width="22" height="26" /><span>OpenStudy</span></div></header>
+        <div class="break-main">
+          <div class="break-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><use href="#i-pause" /></svg></div>
+          <h1 id="break-heading">On a break.</h1>
+          <p id="break-title" class="break-title"></p>
+          <p id="break-location" class="break-location"></p>
+          <p id="break-clock" class="break-location" hidden></p>
+          <div class="break-actions">
+            <button type="button" id="resume-session" class="button button-primary">Resume studying</button>
+            <button type="button" id="break-review-notes" class="quiet-button">Look up later</button>
+            <button type="button" id="end-from-break" class="quiet-button">End session</button>
+          </div>
+          <p id="break-error" class="form-error" role="alert" hidden></p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="note-dialog" aria-labelledby="note-heading">
+      <form id="note-form" class="dialog-form">
+        <h2 id="note-heading">Save for later</h2>
+        <label for="note-text">What do you want to look up?</label>
+        <textarea id="note-text" name="note" rows="5" required maxlength="4000"></textarea>
+        <div class="dialog-actions">
+          <button type="button" id="cancel-note" class="quiet-button">Cancel</button>
+          <button type="submit" id="save-note" class="button button-primary">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="notes-dialog" aria-labelledby="notes-heading">
+      <h2 id="notes-heading">Look up later</h2>
+      <p id="notes-empty">Anything you save while reading will appear here.</p>
+      <ul id="notes-list" class="notes-list"></ul>
+      <div class="dialog-actions"><button type="button" id="close-notes" class="button button-outline">Done</button></div>
+    </dialog>
+
+    <dialog id="options-dialog" aria-labelledby="options-heading">
+      <h2 id="options-heading">Reading options</h2>
+      <button type="button" id="fit-width" class="button button-outline">Fit to width</button>
+      <div id="epub-options" class="epub-options" hidden>
+        <label for="line-height">Line spacing</label>
+        <select id="line-height">
+          <option value="1.35">Tight</option>
+          <option value="1.6" selected>Regular</option>
+          <option value="1.75">Relaxed</option>
+          <option value="1.9">Wide</option>
+        </select>
+        <label for="reading-width">Text width</label>
+        <select id="reading-width">
+          <option value="580">Narrow</option>
+          <option value="680" selected>Regular</option>
+          <option value="900">Wide</option>
+        </select>
+      </div>
+      <form id="pdf-search-form" class="pdf-search-form" role="search">
+        <label for="pdf-search">Find in PDF</label>
+        <div class="search-fields"><input type="search" id="pdf-search" required /><button type="submit" class="button button-outline">Find</button></div>
+        <p id="search-result" role="status"></p>
+      </form>
+      <div class="dialog-actions"><button type="button" id="close-options" class="button button-outline">Done</button></div>
+    </dialog>
+
+    <dialog id="notifications-dialog" aria-labelledby="notifications-heading">
+      <h2 id="notifications-heading">Notification settings</h2>
+      <div id="notifications-description"></div>
+      <div class="dialog-actions">
+        <button type="button" id="open-os-settings" class="button button-outline" hidden>Open Windows settings</button>
+        <button type="button" id="close-notifications" class="button button-outline">Done</button>
+      </div>
+    </dialog>
+
+    <p id="timer-announcement" class="visually-hidden" role="status"></p>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

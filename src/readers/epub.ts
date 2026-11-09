@@ -182,7 +182,27 @@ export async function openEpub(
     const body = contents.document.body;
     body.style.setProperty('--study-size', `${layout.fontSize}px`);
     body.style.setProperty('--study-leading', String(layout.lineHeight));
+    function readerContext(event: MouseEvent | KeyboardEvent): void {
+      event.preventDefault();
+      const target = event.target as Element | null;
+      const anchorBounds = target?.getBoundingClientRect?.();
+      const frameBounds = frame?.getBoundingClientRect();
+      host.dispatchEvent(new CustomEvent('openstudy:reader-context', {
+        bubbles: true,
+        detail: {
+          source: contents.document,
+          target,
+          x: (frameBounds?.left ?? 0) + ('clientX' in event ? event.clientX : anchorBounds?.left ?? 8),
+          y: (frameBounds?.top ?? 0) + ('clientY' in event ? event.clientY : anchorBounds?.bottom ?? 8),
+        },
+      }));
+    }
+    contents.document.addEventListener('contextmenu', readerContext);
     contents.document.addEventListener('keydown', (event) => {
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+        readerContext(event);
+        return;
+      }
       const forwarded = new KeyboardEvent('keydown', {
         key: event.key, code: event.code, repeat: event.repeat, ctrlKey: event.ctrlKey,
         metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, bubbles: true, cancelable: true,

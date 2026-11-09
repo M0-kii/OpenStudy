@@ -1,9 +1,22 @@
+.pdf-stack {
+  position: relative;
+  padding: 20px 0 30px;
+  overflow-anchor: none;
+}
+
 .pdf-page {
   position: relative;
-  margin: 20px auto 30px;
+  margin: 0 auto;
   overflow: hidden;
   background: white;
   box-shadow: 0 4px 24px #0004;
+}
+
+.pdf-page + .pdf-page { margin-top: 24px; }
+
+.pdf-page-error {
+  padding: 1rem;
+  color: #333;
 }
 
 .pdf-page canvas {

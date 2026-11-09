@@ -10,6 +10,10 @@ use std::{
 use tauri::{ipc::Response, AppHandle, Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+#[cfg(windows)]
+mod switch_guard;
+
+const DOCUMENT_EXTENSIONS: [&str; 4] = ["pdf", "epub", "md", "markdown"];
 const MAX_DOCUMENT_BYTES: u64 = 256 * 1024 * 1024;
 static ACCESS_LOCK: Mutex<()> = Mutex::new(());
 
@@ -62,8 +66,11 @@ fn canonical_document(path: &Path) -> Result<PathBuf, String> {
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or("");
-    if !extension.eq_ignore_ascii_case("pdf") && !extension.eq_ignore_ascii_case("epub") {
-        return Err("Choose a PDF or EPUB file.".into());
+    if !DOCUMENT_EXTENSIONS
+        .iter()
+        .any(|supported| extension.eq_ignore_ascii_case(supported))
+    {
+        return Err("Choose a PDF, EPUB, or Markdown file.".into());
     }
     Ok(path)
 }
@@ -74,7 +81,7 @@ async fn pick_document(window: WebviewWindow, app: AppHandle) -> Result<Option<S
         let dialog = app
             .dialog()
             .file()
-            .add_filter("PDF and EPUB", &["pdf", "epub"]);
+            .add_filter("PDF, EPUB, and Markdown", &DOCUMENT_EXTENSIONS);
         let Some(selection) = dialog.set_parent(&window).blocking_pick_file() else {
             return Ok(None);
         };
@@ -102,7 +109,7 @@ async fn read_document(app: AppHandle, path: PathBuf) -> Result<Response, String
         let file = File::open(path).map_err(|_| "This document could not be opened.")?;
         let metadata = file.metadata().map_err(|error| error.to_string())?;
         if !metadata.is_file() {
-            return Err("Choose a regular PDF or EPUB file.".into());
+            return Err("Choose a regular PDF, EPUB, or Markdown file.".into());
         }
         if metadata.len() > MAX_DOCUMENT_BYTES {
             return Err("Choose a document smaller than 256 MB.".into());
@@ -130,13 +137,67 @@ fn open_notification_settings() -> Result<(), String> {
     Err("Open your desktop's notification settings.".into())
 }
 
+#[tauri::command]
+fn set_study_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<(), String> {
+    #[cfg(windows)]
+    if !fullscreen {
+        switch_guard::disable();
+    }
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|error| error.to_string())?;
+    #[cfg(windows)]
+    if fullscreen {
+        if let Ok(hwnd) = window.hwnd() {
+            switch_guard::enable(hwnd.0);
+        }
+    }
+    Ok(())
+}
+
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.setup(|app| {
+        if let Some(window) = app.get_webview_window("main") {
+            window.with_webview(|webview| {
+                #[cfg(windows)]
+                unsafe {
+                    if let Ok(settings) = webview
+                        .controller()
+                        .CoreWebView2()
+                        .and_then(|view| view.Settings())
+                    {
+                        let _ = settings.SetAreDefaultContextMenusEnabled(false);
+                    }
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    use webkit2gtk::WebViewExt;
+                    webview.inner().connect_context_menu(|_, _, _, _| true);
+                }
+            })?;
+        }
+        Ok(())
+    });
+    #[cfg(windows)]
+    let builder = builder.on_window_event(|window, event| {
+        if window.label() == "main"
+            && matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+            )
+        {
+            switch_guard::disable();
+        }
+    });
+    builder
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             pick_document,
             read_document,
-            open_notification_settings
+            open_notification_settings,
+            set_study_fullscreen
         ])
         .run(tauri::generate_context!())
         .expect("failed to start OpenStudy");
@@ -159,5 +220,18 @@ mod tests {
         let grants = read_grants(&registry).unwrap();
         assert_eq!(grants, BTreeSet::from([first, second]));
         assert!(!grants.contains(&other));
+    }
+
+    #[test]
+    fn accepts_markdown_extensions_without_widening_the_file_scope() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in ["Notes.md", "More.MARKDOWN", "Book.EPUB", "Paper.pdf"] {
+            let path = directory.path().join(name);
+            fs::write(&path, "test").unwrap();
+            assert!(canonical_document(&path).is_ok());
+        }
+        let unsupported = directory.path().join("Unrelated.txt");
+        fs::write(&unsupported, "test").unwrap();
+        assert!(canonical_document(&unsupported).is_err());
     }
 }

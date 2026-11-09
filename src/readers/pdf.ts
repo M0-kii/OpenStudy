@@ -64,25 +64,35 @@ export async function openPdf(
   initial: PdfPosition | undefined,
   onChange: (state: ReaderState) => void,
   signal?: AbortSignal,
+  continuous = false,
 ): Promise<Reader> {
   signal?.throwIfAborted();
   const loading = loadPdf(bytes);
   const pdf = await load();
+  const stack = document.createElement('div');
+  stack.className = 'pdf-stack';
+  const pageInset = 20;
+  const pageRatios = new Map<number, number>();
+  const resident = new Set<PageSlot>();
+  let slots: PageSlot[] = [];
+  let stackContinuous = continuous;
+  let stackWidth = 0;
+  let stackHeight = 0;
+  let pageWidth = 0;
+  let scrollFrame = 0;
+  let pinnedScroll = 0;
   let closed = false;
-  let generation = 0;
-  let task: RenderTask | undefined;
-  let textLayer: TextLayer | undefined;
-  let pageElement: HTMLElement | undefined;
-  let renderedPosition: PdfPosition | undefined;
   let position = normalize(initial?.page ?? 1, initial?.zoom ?? 1, initial?.scroll ?? 0);
+  let published: PdfPosition | undefined;
   let search = { query: '', page: 0 };
   let searchId = 0;
   const searchableText = new Map<number, string>();
   const resize = new ResizeObserver(() => {
-    const width = host.clientWidth;
-    if (width > 0 && width !== paintedWidth) void paint(position).catch(() => {});
+    if (!host.clientWidth || !host.clientHeight) return;
+    if (host.clientWidth !== stackWidth || host.clientHeight !== stackHeight) {
+      void display(currentPosition()).catch(() => {});
+    }
   });
-  let paintedWidth = 0;
 
   async function load() {
     const abort = () => { void loading.destroy().catch(() => {}); };
@@ -106,7 +116,10 @@ export async function openPdf(
     };
   }
 
-  function notify(current: PdfPosition) {
+  function publish(current: PdfPosition) {
+    position = current;
+    if (published?.page === current.page && published.zoom === current.zoom && published.scroll === current.scroll) return;
+    published = current;
     onChange({
       position: { ...current },
       label: `Page ${current.page} of ${pdf.numPages}`,
@@ -115,81 +128,191 @@ export async function openPdf(
     });
   }
 
-  function scrolled() {
-    if (!pageElement || renderedPosition !== position) return;
-    const scroll = host.scrollTop / Math.max(1, pageElement.offsetHeight);
-    if (scroll === position.scroll) return;
-    position.scroll = scroll;
-    notify(position);
+  function makeSlot(page: number): PageSlot {
+    const element = document.createElement('article');
+    element.className = 'pdf-page';
+    element.setAttribute('aria-label', `Page ${page}`);
+    element.setAttribute('aria-hidden', 'true');
+    element.dataset.page = String(page);
+    return { page, element };
   }
 
-  async function paint(next: PdfPosition) {
-    if (closed) return;
-    position = { ...next };
-    const drawing = ++generation;
-    task?.cancel();
-    textLayer?.cancel();
-    const page = await pdf.getPage(next.page);
-    if (closed || drawing !== generation) return;
-    const width = host.clientWidth || 800;
-    const naturalWidth = page.getViewport({ scale: 1 }).width;
-    const fitWidth = Math.min(1080, Math.max(200, width - 56));
-    const { canvas, task: drawingTask, viewport } = pageCanvas(page, fitWidth / naturalWidth * next.zoom, window.devicePixelRatio || 1);
-    const article = document.createElement('article');
-    article.className = 'pdf-page';
-    article.setAttribute('aria-label', `Page ${next.page}`);
-    article.style.width = `${viewport.width}px`;
-    article.style.height = `${viewport.height}px`;
-    article.style.setProperty('--scale-factor', String(viewport.scale));
-    article.style.setProperty('--user-unit', String(page.userUnit));
-    article.style.setProperty('--total-scale-factor', String(viewport.scale * page.userUnit));
-    canvas.setAttribute('aria-hidden', 'true');
-    const text = document.createElement('div');
-    text.className = 'textLayer';
-    article.append(canvas, text);
-    const layer = new TextLayer({ textContentSource: page.streamTextContent(), viewport, container: text });
-    task = drawingTask;
-    textLayer = layer;
-    try {
-      await Promise.all([drawingTask.promise, layer.render().catch(() => {})]);
-    } catch (error) {
-      if (!closed && drawing === generation) throw error;
-      return;
+  function aspectRatio(page: number): number {
+    return pageRatios.get(page) ?? 792 / 612;
+  }
+
+  function sizeSlot(slot: PageSlot) {
+    slot.element.style.width = `${pageWidth}px`;
+    slot.element.style.height = `${pageWidth * aspectRatio(slot.page)}px`;
+  }
+
+  function slotTop(slot: PageSlot): number {
+    return slot.element.offsetTop - pageInset;
+  }
+
+  function indexAt(y: number): number {
+    let first = 0;
+    let last = slots.length - 1;
+    while (first < last) {
+      const middle = Math.ceil((first + last) / 2);
+      if (slotTop(slots[middle]) <= y) first = middle;
+      else last = middle - 1;
     }
-    if (closed || drawing !== generation) return;
-    task = undefined;
-    textLayer = undefined;
-    paintedWidth = width;
-    pageElement = article;
-    host.replaceChildren(article);
-    host.scrollTop = Math.round(next.scroll * viewport.height);
-    if (renderedPosition?.page !== next.page) host.scrollLeft = 0;
-    renderedPosition = position;
-    position.scroll = host.scrollTop / Math.max(1, article.offsetHeight);
-    notify(position);
+    return first;
+  }
+
+  function currentPosition(): PdfPosition {
+    if (!slots.length || host.scrollTop === pinnedScroll || !host.clientHeight) return position;
+    const slot = slots[indexAt(host.scrollTop)];
+    return normalize(slot.page, position.zoom, (host.scrollTop - slotTop(slot)) / Math.max(1, slot.element.offsetHeight));
+  }
+
+  function pin(next: PdfPosition) {
+    const slot = slots[continuous ? next.page - 1 : 0];
+    const last = slots[slots.length - 1];
+    const top = Math.round(slotTop(slot) + next.scroll * slot.element.offsetHeight);
+    const lastTop = slotTop(last);
+    const end = last.element.offsetTop + last.element.offsetHeight;
+    // Leave enough room to align short last pages and restore a deep anchor in single-page mode.
+    stack.style.paddingBottom = `${Math.max(30, Math.max(lastTop, top) + host.clientHeight - end)}px`;
+    host.scrollTop = top;
+    pinnedScroll = host.scrollTop;
+    publish(next);
+  }
+
+  function release(slot: PageSlot) {
+    slot.drawing?.task?.cancel();
+    slot.drawing?.textLayer?.cancel();
+    slot.drawing = undefined;
+    slot.element.replaceChildren();
+    slot.element.setAttribute('aria-hidden', 'true');
+    resident.delete(slot);
+  }
+
+  function draw(slot: PageSlot): Promise<void> {
+    if (slot.drawing) return slot.drawing.finished;
+    const drawing: PageDrawing = { finished: Promise.resolve() };
+    slot.drawing = drawing;
+    resident.add(slot);
+    drawing.finished = paintSlot(slot, drawing);
+    return drawing.finished;
+  }
+
+  async function paintSlot(slot: PageSlot, drawing: PageDrawing) {
+    try {
+      const page = await pdf.getPage(slot.page);
+      if (closed || slot.drawing !== drawing) return;
+      const natural = page.getViewport({ scale: 1 });
+      const ratio = natural.height / natural.width;
+      if (ratio !== aspectRatio(slot.page)) {
+        const anchor = currentPosition();
+        pageRatios.set(slot.page, ratio);
+        sizeSlot(slot);
+        pin(anchor);
+        scheduleVisible();
+      }
+      const { canvas, task, viewport } = pageCanvas(page, pageWidth / natural.width, window.devicePixelRatio || 1);
+      const article = slot.element;
+      article.style.setProperty('--scale-factor', String(viewport.scale));
+      article.style.setProperty('--user-unit', String(page.userUnit));
+      article.style.setProperty('--total-scale-factor', String(viewport.scale * page.userUnit));
+      canvas.setAttribute('aria-hidden', 'true');
+      const text = document.createElement('div');
+      text.className = 'textLayer';
+      const textLayer = new TextLayer({ textContentSource: page.streamTextContent(), viewport, container: text });
+      drawing.task = task;
+      drawing.textLayer = textLayer;
+      await Promise.all([task.promise, textLayer.render().catch(() => {})]);
+      if (closed || slot.drawing !== drawing) return;
+      drawing.task = undefined;
+      drawing.textLayer = undefined;
+      article.replaceChildren(canvas, text);
+      article.removeAttribute('aria-hidden');
+    } catch (error) {
+      if (closed || slot.drawing !== drawing) return;
+      const message = document.createElement('p');
+      message.className = 'pdf-page-error';
+      message.textContent = `Page ${slot.page} could not be displayed.`;
+      slot.element.replaceChildren(message);
+      slot.element.removeAttribute('aria-hidden');
+      throw error;
+    }
+  }
+
+  function scheduleVisible() {
+    if (closed || !continuous || scrollFrame) return;
+    scrollFrame = requestAnimationFrame(() => {
+      scrollFrame = 0;
+      if (!continuous || !host.clientHeight) return;
+      const top = host.scrollTop;
+      const overscan = Math.min(600, host.clientHeight / 2);
+      const first = Math.max(indexAt(top - overscan), indexAt(top) - 2);
+      const last = Math.min(indexAt(top + host.clientHeight + overscan), first + 11);
+      for (const slot of resident) if (slot.page - 1 < first || slot.page - 1 > last) release(slot);
+      for (let index = first; index <= last; index++) void draw(slots[index]).catch(() => {});
+    });
+  }
+
+  function scrolled() {
+    publish(currentPosition());
+    scheduleVisible();
+  }
+
+  async function display(next: PdfPosition) {
+    if (closed) return;
+    const width = host.clientWidth || stackWidth || 800;
+    const nextPageWidth = Math.min(1080, Math.max(200, width - 56)) * next.zoom;
+    const rebuild = slots.length === 0 || stackContinuous !== continuous || (!continuous && slots[0].page !== next.page);
+    if (rebuild || nextPageWidth !== pageWidth) for (const slot of resident) release(slot);
+    if (rebuild) {
+      slots = continuous ? Array.from({ length: pdf.numPages }, (_, index) => makeSlot(index + 1)) : [makeSlot(next.page)];
+      stackContinuous = continuous;
+    }
+    if (rebuild || nextPageWidth !== pageWidth) {
+      pageWidth = nextPageWidth;
+      for (const slot of slots) sizeSlot(slot);
+    }
+    if (rebuild) {
+      const pages = document.createDocumentFragment();
+      for (const slot of slots) pages.append(slot.element);
+      stack.replaceChildren(pages);
+      if (!stack.isConnected) host.replaceChildren(stack);
+    }
+    stackWidth = width;
+    stackHeight = host.clientHeight;
+    if (position.page !== next.page) host.scrollLeft = 0;
+    pin(next);
+    scheduleVisible();
+    await draw(slots[continuous ? next.page - 1 : 0]);
   }
 
   function destroy() {
     if (closed) return;
     closed = true;
     resize.disconnect();
+    cancelAnimationFrame(scrollFrame);
     host.removeEventListener('scroll', scrolled);
     signal?.removeEventListener('abort', destroy);
-    task?.cancel();
-    textLayer?.cancel();
-    pageElement?.remove();
+    for (const slot of resident) release(slot);
+    stack.remove();
     void loading.destroy().catch(() => {});
   }
 
   function go(page: number) {
-    return paint(normalize(page, position.zoom, 0));
+    return display(normalize(page, position.zoom, 0));
+  }
+
+  function step(offset: number) {
+    const target = currentPosition().page + offset;
+    return target >= 1 && target <= pdf.numPages ? go(target) : Promise.resolve();
   }
 
   async function find(query: string) {
     query = query.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
     if (!query || closed) return false;
     const currentSearch = ++searchId;
-    const start = search.query === query && search.page === position.page ? position.page + 1 : position.page;
+    const page = currentPosition().page;
+    const start = search.query === query && search.page === page ? page + 1 : page;
     for (let offset = 0; offset < pdf.numPages; offset++) {
       if (closed || currentSearch !== searchId) return false;
       const pageNumber = (start + offset - 1) % pdf.numPages + 1;
@@ -212,16 +335,28 @@ export async function openPdf(
   try {
     signal?.throwIfAborted();
     signal?.addEventListener('abort', destroy, { once: true });
-    await paint(position);
+    await display(position);
     signal?.throwIfAborted();
     host.addEventListener('scroll', scrolled, { passive: true });
     resize.observe(host);
     return {
-      previous: () => position.page > 1 ? go(position.page - 1) : Promise.resolve(),
-      next: () => position.page < pdf.numPages ? go(position.page + 1) : Promise.resolve(),
-      goTo: async (target) => { if (target.kind === 'pdf') await paint(normalize(target.page, position.zoom, target.scroll)); },
-      zoom: (delta) => paint(normalize(position.page, position.zoom * 1.18 ** delta, position.scroll)),
-      fit: () => paint(normalize(position.page, 1, position.scroll)),
+      previous: () => step(-1),
+      next: () => step(1),
+      goTo: async (target) => { if (target.kind === 'pdf') await display(normalize(target.page, position.zoom, target.scroll)); },
+      zoom: (delta) => {
+        const current = currentPosition();
+        return display(normalize(current.page, current.zoom * 1.18 ** delta, current.scroll));
+      },
+      fit: () => {
+        const current = currentPosition();
+        return display(normalize(current.page, 1, current.scroll));
+      },
+      setPdfContinuous: async (enabled) => {
+        if (continuous === enabled || closed) return;
+        const anchor = currentPosition();
+        continuous = enabled;
+        await display(anchor);
+      },
       setEpubLayout: async () => {},
       find,
       destroy,
@@ -230,4 +365,16 @@ export async function openPdf(
     destroy();
     throw error;
   }
+}
+
+interface PageSlot {
+  page: number;
+  element: HTMLElement;
+  drawing?: PageDrawing;
+}
+
+interface PageDrawing {
+  finished: Promise<void>;
+  task?: RenderTask;
+  textLayer?: TextLayer;
 }

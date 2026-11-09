@@ -8,25 +8,32 @@
     <link rel="icon" href="/ribbon.svg" type="image/svg+xml" />
   </head>
   <body>
-    <svg class="icon-defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3.5h8l4 4v13H6zM14 3.5v4h4M9 12h6M9 15.5h6" /></symbol>
-      <symbol id="i-left" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6" /></symbol>
-      <symbol id="i-right" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6" /></symbol>
-      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12" /></symbol>
-      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M6 12h12" /></symbol>
-      <symbol id="i-notes" viewBox="0 0 24 24"><path d="M6 3.5h12v17H6zM9.5 8h5M9.5 12h5M9.5 16h3" /></symbol>
-      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m5 16-1 4 4-1L19 8l-3-3L5 16ZM14.5 6.5l3 3" /></symbol>
-      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11" /></symbol>
-      <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM9 5v14M12 9h5M12 13h5" /></symbol>
-      <symbol id="i-options" viewBox="0 0 24 24"><path d="M4 7h6m4 0h6M4 12h11m4 0h1M4 17h2m4 0h10M10 5v4m9 1v4M6 15v4" /></symbol>
-    </svg>
+    <header id="window-bar" class="window-bar" aria-label="Window bar" data-window-drag>
+      <div class="window-brand" data-window-drag>
+        <img src="/ribbon.svg" alt="" width="16" height="19" draggable="false" />
+        <span>OpenStudy</span>
+      </div>
+      <button id="window-menu-toggle" type="button" class="icon-button window-menu-toggle" aria-label="App menu" aria-controls="window-menu" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
+      <div id="window-menu" class="window-menu" role="group" aria-label="App commands" inert>
+        <button type="button" class="quiet-button" data-command="choose-file"><i class="icon" data-lucide="folder-open" aria-hidden="true"></i>Open file</button>
+        <button type="button" class="quiet-button" data-command="nav-library"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i>Study space</button>
+        <button type="button" class="quiet-button" data-command="open-settings"><i class="icon" data-lucide="settings-2" aria-hidden="true"></i>Settings</button>
+      </div>
+      <div class="window-spacer" data-window-drag></div>
+      <div id="window-controls" class="window-controls" hidden>
+        <button id="window-minimize" type="button" class="icon-button" aria-label="Minimize window" title="Minimize"><i class="icon" data-lucide="minus" aria-hidden="true"></i></button>
+        <button id="window-maximize" type="button" class="icon-button" aria-label="Maximize window" title="Maximize">
+          <span id="window-maximize-icon"><i class="icon" data-lucide="square" aria-hidden="true"></i></span><span id="window-restore-icon" hidden><i class="icon" data-lucide="copy" aria-hidden="true"></i></span>
+        </button>
+        <button id="window-close" type="button" class="icon-button" aria-label="Close window" title="Close"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+    </header>
 
     <div class="workspace-shell">
       <aside class="sidebar" aria-label="OpenStudy sidebar">
-        <div class="sidebar-brand app-brand"><img src="/ribbon.svg" alt="" width="19" height="23" /><span>OpenStudy</span></div>
         <nav class="sidebar-actions" aria-label="Workspace">
-          <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-library" /></svg>Study space</button>
-          <button type="button" id="choose-file" class="sidebar-button"><svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>Open file</button>
+          <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i>Study space</button>
+          <button type="button" id="choose-file" class="sidebar-button"><i class="icon" data-lucide="plus" aria-hidden="true"></i>Open file</button>
         </nav>
         <section class="sidebar-library" aria-labelledby="recent-heading">
           <h2 id="recent-heading">Recent files</h2>
@@ -34,7 +41,7 @@
           <ul id="recent-list" class="recent-list"></ul>
         </section>
         <div class="sidebar-footer">
-          <button type="button" id="open-settings" class="sidebar-button" aria-controls="settings-screen"><svg class="icon" aria-hidden="true"><use href="#i-options" /></svg>Settings</button>
+          <button type="button" id="open-settings" class="sidebar-button" aria-controls="settings-screen"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i>Settings</button>
         </div>
       </aside>
 
@@ -46,7 +53,7 @@
           <div class="workspace-empty">
             <svg class="icon empty-file-icon" aria-hidden="true"><use href="#i-file" /></svg>
             <h2>No document open</h2>
-            <p>Choose a PDF or EPUB to start studying.</p>
+            <p>Open a PDF, EPUB, or Markdown file.</p>
             <button type="button" id="choose-file-inline" class="button button-primary">Open file</button>
           </div>
 
@@ -75,33 +82,46 @@
         </section>
 
         <section id="reader-screen" class="reader" aria-label="Reading session" hidden>
-          <header class="reader-toolbar" aria-label="Reader controls">
-            <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
-            <div class="reader-controls">
-              <div class="control-group" role="group" aria-label="Page navigation">
-                <button type="button" id="previous-page" class="icon-button" title="Previous page" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></button>
-                <output id="reader-location" class="reader-location" aria-live="polite"></output>
-                <button type="button" id="next-page" class="icon-button" title="Next page" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#i-right" /></svg></button>
+          <div id="reader-chrome" class="reader-chrome">
+            <button id="reader-toolbar-toggle" type="button" class="reader-top-edge" aria-label="Reading toolbar" aria-controls="reader-toolbar" aria-expanded="false"><span></span></button>
+            <header id="reader-toolbar" class="reader-toolbar" aria-label="Reader controls" inert>
+              <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
+              <div class="reader-controls">
+                <div class="control-group zoom-controls" role="group" aria-label="Reading size">
+                  <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><i class="icon" data-lucide="minus" aria-hidden="true"></i></button>
+                  <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
+                  <button type="button" id="zoom-in" class="icon-button" title="Increase reading size" aria-label="Increase reading size"><i class="icon" data-lucide="plus" aria-hidden="true"></i></button>
+                </div>
+                <div class="control-group note-controls" role="group" aria-label="Notes">
+                  <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><i class="icon" data-lucide="pencil" aria-hidden="true"></i></button>
+                  <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><i class="icon" data-lucide="notebook-pen" aria-hidden="true"></i></button>
+                </div>
+                <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
               </div>
-              <div class="control-group zoom-controls" role="group" aria-label="Reading size">
-                <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><svg class="icon" aria-hidden="true"><use href="#i-minus" /></svg></button>
-                <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
-                <button type="button" id="zoom-in" class="icon-button" title="Increase reading size" aria-label="Increase reading size"><svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg></button>
-              </div>
-              <div class="control-group note-controls" role="group" aria-label="Notes">
-                <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><svg class="icon" aria-hidden="true"><use href="#i-pencil" /></svg></button>
-                <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><svg class="icon" aria-hidden="true"><use href="#i-notes" /></svg></button>
-              </div>
-              <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><svg class="icon" aria-hidden="true"><use href="#i-options" /></svg></button>
-            </div>
-            <div class="reader-actions">
-              <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
-              <button type="button" id="take-break" class="button button-outline"><svg class="icon" aria-hidden="true"><use href="#i-pause" /></svg><span>Take a break</span></button>
-              <button type="button" id="end-session" class="quiet-button">End session</button>
-            </div>
-          </header>
+              <output id="reader-location" class="reader-location" aria-hidden="true"></output>
+            </header>
+          </div>
+
           <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
+          <p id="reader-location-status" class="visually-hidden" role="status"></p>
           <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
+
+          <div class="reader-bottom" aria-label="Reading navigation">
+            <button type="button" id="previous-page" class="icon-button reader-edge-button" title="Previous page" aria-label="Previous page"><i class="icon" data-lucide="chevron-left" aria-hidden="true"></i></button>
+            <div class="reader-bottom-right">
+              <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
+              <div id="reader-session-dock" class="reader-session-dock">
+                <button type="button" id="reader-session-toggle" class="icon-button reader-edge-button" title="Session controls" aria-label="Session controls" aria-controls="reader-session-card" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
+                <div id="reader-session-card" class="reader-session-card" role="group" aria-label="Session actions" inert>
+                  <div class="session-card-inner">
+                    <button type="button" id="take-break" class="quiet-button"><i class="icon" data-lucide="pause" aria-hidden="true"></i>Take a break</button>
+                    <button type="button" id="end-session" class="quiet-button"><i class="icon" data-lucide="log-out" aria-hidden="true"></i>End session</button>
+                  </div>
+                </div>
+              </div>
+              <button type="button" id="next-page" class="icon-button reader-edge-button" title="Next page" aria-label="Next page"><i class="icon" data-lucide="chevron-right" aria-hidden="true"></i></button>
+            </div>
+          </div>
         </section>
 
         <section id="break-screen" class="break" aria-labelledby="break-heading" hidden>
@@ -121,7 +141,7 @@
 
         <section id="settings-screen" class="settings" aria-labelledby="settings-heading" hidden>
           <header class="workspace-heading">
-            <button type="button" id="close-settings" class="quiet-button settings-back"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg>Back</button>
+            <button type="button" id="close-settings" class="quiet-button settings-back"><i class="icon" data-lucide="chevron-left" aria-hidden="true"></i>Back</button>
             <h1 id="settings-heading" tabindex="-1">Settings</h1>
           </header>
           <p id="settings-error" class="form-error" role="alert" hidden></p>
@@ -146,6 +166,13 @@
                 <p id="show-countdown-help">The timer still tells you when time is up.</p>
               </div>
               <input type="checkbox" id="show-countdown" aria-describedby="show-countdown-help" checked />
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label for="continuous-pdf">Scroll through PDF pages</label>
+                <p id="continuous-pdf-help">Stack pages vertically in the reader.</p>
+              </div>
+              <input type="checkbox" id="continuous-pdf" aria-describedby="continuous-pdf-help" />
             </div>
           </section>
           <section class="settings-list" aria-labelledby="notifications-heading">
@@ -178,7 +205,10 @@
 
     <dialog id="options-dialog" aria-labelledby="options-heading">
       <h2 id="options-heading">Reading options</h2>
-      <button type="button" id="fit-width" class="button button-outline">Fit to width</button>
+      <div id="pdf-reading-options" class="pdf-reading-options">
+        <button type="button" id="fit-width" class="button button-outline">Fit to width</button>
+        <label class="inline-option"><input type="checkbox" id="reader-continuous-pdf" />Scroll through PDF pages</label>
+      </div>
       <div id="epub-options" class="epub-options" hidden>
         <label for="line-height">Line spacing</label>
         <select id="line-height">
@@ -202,6 +232,7 @@
       <div class="dialog-actions"><button type="button" id="close-options" class="button button-outline">Done</button></div>
     </dialog>
 
+    <div id="context-menu" class="context-menu" role="menu" aria-label="OpenStudy commands" inert></div>
     <p id="timer-announcement" class="visually-hidden" role="status"></p>
     <script type="module" src="/src/main.ts"></script>
   </body>

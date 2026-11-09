@@ -19,7 +19,7 @@ export async function pickDocument(): Promise<DocumentSelection | null> {
 
   const file = await chooseBrowserFile();
   if (!file) return null;
-  if (!/\.(pdf|epub)$/i.test(file.name)) throw new Error('Choose a PDF or EPUB file.');
+  if (!/\.(pdf|epub|md|markdown)$/i.test(file.name)) throw new Error('Choose a PDF, EPUB, or Markdown file.');
   if (file.size > 256 * 1024 * 1024) throw new Error('Choose a document smaller than 256 MB.');
   const path = `preview:${file.name}:${file.lastModified}:${file.size}`;
   await browserFile(path, file);
@@ -38,12 +38,32 @@ export async function readDocument(path: string): Promise<ArrayBuffer> {
 
 export async function setFullscreen(value: boolean): Promise<void> {
   if (isTauri()) {
-    await getCurrentWindow().setFullscreen(value);
+    await invoke('set_study_fullscreen', { fullscreen: value });
   } else if (value && !document.fullscreenElement && document.fullscreenEnabled) {
     await document.documentElement.requestFullscreen();
   } else if (!value && document.fullscreenElement) {
     await document.exitFullscreen();
   }
+}
+
+export async function startDragging(): Promise<void> {
+  if (isTauri()) await getCurrentWindow().startDragging();
+}
+
+export async function minimizeWindow(): Promise<void> {
+  if (isTauri()) await getCurrentWindow().minimize();
+}
+
+export async function toggleMaximizeWindow(): Promise<void> {
+  if (isTauri()) await getCurrentWindow().toggleMaximize();
+}
+
+export async function closeWindow(): Promise<void> {
+  if (isTauri()) await getCurrentWindow().close();
+}
+
+export async function isWindowMaximized(): Promise<boolean> {
+  return isTauri() && getCurrentWindow().isMaximized();
 }
 
 export function openNotificationSettings(): Promise<void> {
@@ -54,7 +74,7 @@ function chooseBrowserFile(): Promise<File | null> {
   return new Promise(resolve => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.pdf,.epub,application/pdf,application/epub+zip';
+    input.accept = '.pdf,.epub,.md,.markdown,application/pdf,application/epub+zip,text/markdown';
     input.hidden = true;
     const finish = () => {
       const file = input.files?.item(0) ?? null;

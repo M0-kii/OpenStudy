@@ -1,4 +1,4 @@
-import type { ReadingPosition } from './readers';
+import type { DocumentKind, ReadingPosition } from './readers';
 
 export interface StudyNote {
   text: string;
@@ -10,7 +10,7 @@ export interface SavedDocument {
   path: string;
   name: string;
   title: string;
-  kind: 'pdf' | 'epub';
+  kind: DocumentKind;
   position?: ReadingPosition;
   label?: string;
   updatedAt: number;

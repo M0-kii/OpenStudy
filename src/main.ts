@@ -1,9 +1,13 @@
 import './style.css';
-import { openNotificationSettings, pickDocument, platform, readDocument, setFullscreen } from './desktop';
+import {
+  closeWindow, isWindowMaximized, minimizeWindow, openNotificationSettings, pickDocument, platform,
+  readDocument, setFullscreen, startDragging, toggleMaximizeWindow,
+} from './desktop';
 import { loadLibrary, saveLibrary, type SavedDocument } from './library';
-import { openReader, previewDocument, type Reader, type ReaderState, type ReadingPosition } from './readers';
+import { openReader, previewDocument, type DocumentKind, type Reader, type ReaderState, type ReadingPosition } from './readers';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
 import { clockLabel, StudyTimer } from './timer';
+import { bindContextMenu, copyText, disclosure, drawIcons, type ContextCommand, type ContextTarget } from './window-ui';
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
   const node = document.getElementById(id);
@@ -32,6 +36,8 @@ const settingsError = element('settings-error');
 const timerSelect = element<HTMLSelectElement>('session-minutes');
 const defaultMinutes = element<HTMLSelectElement>('default-minutes');
 const showCountdown = element<HTMLInputElement>('show-countdown');
+const continuousPdf = element<HTMLInputElement>('continuous-pdf');
+const readerContinuousPdf = element<HTMLInputElement>('reader-continuous-pdf');
 const recentList = element('recent-list');
 const pickerButtons = ['choose-file', 'choose-file-inline', 'choose-another'].map(button);
 const selectedDocument = element('selected-document');
@@ -40,6 +46,15 @@ const noteDialog = element<HTMLDialogElement>('note-dialog');
 const notesDialog = element<HTMLDialogElement>('notes-dialog');
 const optionsDialog = element<HTMLDialogElement>('options-dialog');
 const os = platform();
+const windowMenuToggle = button('window-menu-toggle');
+const toolbarToggle = button('reader-toolbar-toggle');
+const sessionToggle = button('reader-session-toggle');
+const windowMenu = element('window-menu');
+const windowCommands = Array.from(windowMenu.querySelectorAll<HTMLButtonElement>('[data-command]'));
+const appMenu = disclosure(windowMenuToggle, windowMenu);
+const readerToolbar = disclosure(toolbarToggle, element('reader-toolbar'), element('reader-chrome'));
+const sessionMenu = disclosure(sessionToggle, element('reader-session-card'), element('reader-session-dock'));
+drawIcons();
 
 let library: SavedDocument[] = [];
 let selection: { document: SavedDocument; bytes?: ArrayBuffer } | undefined;
@@ -64,6 +79,9 @@ function showError(node: HTMLElement, message = ''): void {
 function setScreen(next: Screen): void {
   if (next !== screen) {
     for (const error of [launcherError, readerError, breakError, settingsError]) showError(error);
+    appMenu.close();
+    readerToolbar.close();
+    sessionMenu.close();
   }
   screen = next;
   for (const [name, node] of Object.entries(screens)) {
@@ -98,6 +116,7 @@ function syncControls(): void {
   button('end-from-break').disabled = busy;
   button('take-break').disabled = busy;
   button('end-session').disabled = busy;
+  for (const command of windowCommands) command.disabled = button(command.dataset.command!).disabled;
 }
 
 function setBusy(value: boolean): void {
@@ -123,7 +142,7 @@ function renderLibrary(): void {
     title.textContent = entry.title;
     const detail = document.createElement('span');
     detail.className = 'recent-meta';
-    detail.textContent = entry.label ?? entry.kind.toUpperCase();
+    detail.textContent = entry.label ?? kindLabel(entry.kind);
     row.append(title, detail);
     row.addEventListener('click', () => void selectDocument(async () => ({
       path: entry.path,
@@ -133,6 +152,10 @@ function renderLibrary(): void {
     item.append(row);
     recentList.append(item);
   }
+}
+
+function kindLabel(kind: DocumentKind): string {
+  return kind === 'markdown' ? 'Markdown' : kind.toUpperCase();
 }
 
 function clearPreview(): void {
@@ -150,22 +173,25 @@ async function selectDocument(
   if (screen === 'settings') setScreen('launcher');
   setBusy(true);
   showError(launcherError);
+  let kind: DocumentKind | undefined;
   try {
     const file = await pick();
     if (!file) return;
     launcherLoading.hidden = false;
     const extension = file.name.split('.').pop()?.toLowerCase();
-    if (extension !== 'pdf' && extension !== 'epub') {
-      showError(launcherError, 'Choose a PDF or EPUB file.');
+    kind = extension === 'md' || extension === 'markdown' ? 'markdown'
+      : extension === 'pdf' || extension === 'epub' ? extension : undefined;
+    if (!kind) {
+      showError(launcherError, 'Choose a PDF, EPUB, or Markdown file.');
       return;
     }
-    const cover = await previewDocument(extension, file.bytes);
+    const cover = await previewDocument(kind, file.bytes);
     const existing = library.find((entry) => entry.path === file.path);
     const saved = existing ?? {
       path: file.path,
       name: file.name,
       title: cover.title || file.name.replace(/\.[^.]+$/, ''),
-      kind: extension,
+      kind,
       updatedAt: 0,
       notes: [],
     };
@@ -190,7 +216,8 @@ async function selectDocument(
     const detail = error instanceof Error ? error.message : error;
     const size = typeof detail === 'string' && detail.includes('smaller than 256 MB');
     showError(launcherError, password ? 'This PDF is password-protected. Choose an unlocked copy.'
-      : size ? 'Choose a document smaller than 256 MB.' : failure);
+      : size ? 'Choose a document smaller than 256 MB.'
+      : kind === 'markdown' && error instanceof Error ? error.message : failure);
   } finally {
     launcherLoading.hidden = true;
     setBusy(false);
@@ -221,12 +248,14 @@ function persist(): boolean {
 function updateReading(state: ReaderState): void {
   reading = state;
   element('reader-location').textContent = state.label;
+  const locationStatus = element('reader-location-status');
+  if (locationStatus.textContent !== state.label) locationStatus.textContent = state.label;
   element('break-location').textContent = state.label;
   button('previous-page').disabled = !state.canPrevious;
   button('next-page').disabled = !state.canNext;
-  element('zoom-level').textContent = state.position.kind === 'pdf'
-    ? `${Math.round(state.position.zoom * 100)}%`
-    : `${state.position.fontSize}px`;
+  element('zoom-level').textContent = state.position.kind === 'epub'
+    ? `${state.position.fontSize}px`
+    : `${Math.round(state.position.zoom * 100)}%`;
   if (state.position.kind === 'epub') {
     element<HTMLSelectElement>('line-height').value = String(state.position.lineHeight);
     element<HTMLSelectElement>('reading-width').value = String(state.position.width);
@@ -263,16 +292,26 @@ async function startSession(position?: ReadingPosition): Promise<void> {
   try {
     element('reader-title').textContent = entry.title;
     element('break-title').textContent = entry.title;
+    element('reader-location').textContent = '';
+    element('reader-location-status').textContent = '';
     element('pdf-search-form').hidden = entry.kind !== 'pdf';
     element('epub-options').hidden = entry.kind !== 'epub';
-    button('fit-width').hidden = entry.kind !== 'pdf';
+    element('pdf-reading-options').hidden = entry.kind !== 'pdf';
+    readerContinuousPdf.checked = settings.pdfContinuous;
+    button('reader-options').hidden = entry.kind === 'markdown';
+    const previousLabel = entry.kind === 'markdown' ? 'Scroll back' : 'Previous page';
+    const nextLabel = entry.kind === 'markdown' ? 'Scroll forward' : 'Next page';
+    for (const [id, label] of [['previous-page', previousLabel], ['next-page', nextLabel]]) {
+      button(id).setAttribute('aria-label', label);
+      button(id).title = label;
+    }
     element<HTMLInputElement>('pdf-search').value = '';
     showError(element('search-result'));
     reading = undefined;
     setScreen('reader');
     await setFullscreen(true);
     const bytes = selection.bytes ?? await readDocument(entry.path);
-    reader = await openReader(viewport, entry.kind, bytes, position ?? entry.position, updateReading);
+    reader = await openReader(viewport, entry.kind, bytes, position ?? entry.position, updateReading, undefined, settings.pdfContinuous);
     selection.bytes = undefined;
     const minutes = Number(timerSelect.value);
     timer = minutes > 0 ? new StudyTimer(minutes) : undefined;
@@ -321,12 +360,15 @@ async function resumeSession(): Promise<boolean> {
   try {
     await setFullscreen(true);
     setScreen('reader');
+    await reader?.setPdfContinuous?.(settings.pdfContinuous);
     timer?.resume(performance.now());
     updateClock();
     viewport.focus();
     return true;
   } catch (error) {
     console.error(error);
+    await setFullscreen(false).catch(console.error);
+    setScreen('break');
     showError(breakError, 'Could not enter fullscreen. Try resuming again.');
     return false;
   } finally {
@@ -346,7 +388,7 @@ async function endSession(): Promise<void> {
     timer = undefined;
     viewport.replaceChildren();
     if (selection) {
-      element('selected-meta').textContent = selection.document.label ?? selection.document.kind.toUpperCase();
+      element('selected-meta').textContent = selection.document.label ?? kindLabel(selection.document.kind);
       button('launcher-review-notes').hidden = selection.document.notes.length === 0;
     }
     timerSelect.value = String(settings.defaultMinutes);
@@ -420,18 +462,24 @@ function notificationCopy(): string {
   }
 }
 
-function changeSettings(next: StudySettings): void {
-  showError(settingsError);
+function changeSettings(next: StudySettings, errorNode = settingsError): boolean {
+  showError(errorNode);
   try {
     saveSettings(next);
     if (next.defaultMinutes !== settings.defaultMinutes) timerSelect.value = String(next.defaultMinutes);
     settings = next;
+    continuousPdf.checked = settings.pdfContinuous;
+    readerContinuousPdf.checked = settings.pdfContinuous;
     updateClock();
+    return true;
   } catch (error) {
     console.error(error);
     defaultMinutes.value = String(settings.defaultMinutes);
     showCountdown.checked = settings.showCountdown;
-    showError(settingsError, 'OpenStudy could not save your settings. Try again.');
+    continuousPdf.checked = settings.pdfContinuous;
+    readerContinuousPdf.checked = settings.pdfContinuous;
+    showError(errorNode, 'OpenStudy could not save your settings. Try again.');
+    return false;
   }
 }
 
@@ -444,7 +492,7 @@ function returnFromSettings(): void {
 for (const picker of pickerButtons) {
   picker.addEventListener('click', () => void selectDocument(
     pickDocument,
-    'OpenStudy could not open that file. Choose a readable PDF or EPUB.',
+    'OpenStudy could not open that file. Choose a readable PDF, EPUB, or Markdown file.',
   ));
 }
 button('start-session').addEventListener('click', () => void startSession());
@@ -464,6 +512,22 @@ button('reader-options').addEventListener('click', () => {
   if (reader && !busy && !readerBusy) optionsDialog.showModal();
 });
 button('close-options').addEventListener('click', () => optionsDialog.close());
+readerContinuousPdf.addEventListener('change', async () => {
+  const previous = settings.pdfContinuous;
+  const enabled = readerContinuousPdf.checked;
+  readerContinuousPdf.disabled = true;
+  try {
+    await readerAction(async (active) => {
+      await active.setPdfContinuous?.(enabled);
+      if (!changeSettings({ ...settings, pdfContinuous: enabled }, readerError)) {
+        await active.setPdfContinuous?.(previous);
+      }
+    });
+  } finally {
+    readerContinuousPdf.disabled = false;
+    readerContinuousPdf.checked = settings.pdfContinuous;
+  }
+});
 element<HTMLSelectElement>('line-height').addEventListener('change', (event) => {
   const lineHeight = Number((event.target as HTMLSelectElement).value);
   void readerAction((active) => active.setEpubLayout({ lineHeight }));
@@ -517,8 +581,11 @@ osSettingsButton.hidden = os !== 'windows';
 defaultMinutes.value = String(settings.defaultMinutes);
 timerSelect.value = String(settings.defaultMinutes);
 showCountdown.checked = settings.showCountdown;
+continuousPdf.checked = settings.pdfContinuous;
+readerContinuousPdf.checked = settings.pdfContinuous;
 defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
 showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
+continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
 button('open-settings').addEventListener('click', () => {
   if (busy || (screen !== 'launcher' && screen !== 'break')) return;
   settingsReturn = screen;
@@ -527,9 +594,10 @@ button('open-settings').addEventListener('click', () => {
 });
 button('close-settings').addEventListener('click', returnFromSettings);
 button('nav-library').addEventListener('click', () => {
-  if (busy || screen !== 'settings') return;
-  setScreen(settingsReturn);
-  element(settingsReturn === 'break' ? 'resume-session' : 'workspace-title').focus();
+  if (busy || screen === 'reader') return;
+  const target = screen === 'settings' ? settingsReturn : screen;
+  setScreen(target);
+  element(target === 'break' ? 'resume-session' : 'workspace-title').focus();
 });
 osSettingsButton.addEventListener('click', async () => {
   showError(settingsError);
@@ -541,11 +609,135 @@ osSettingsButton.addEventListener('click', async () => {
   }
 });
 
+for (const command of windowCommands) {
+  command.addEventListener('click', () => {
+    appMenu.close();
+    windowMenuToggle.focus();
+    button(command.dataset.command!).click();
+  });
+}
+
+const windowControls = element('window-controls');
+if (os !== 'browser') {
+  windowControls.hidden = false;
+  const maximize = button('window-maximize');
+  let resizeFrame = 0;
+  async function syncMaximizeButton(): Promise<void> {
+    if (screen === 'reader') return;
+    const maximized = await isWindowMaximized();
+    maximize.setAttribute('aria-label', maximized ? 'Restore window' : 'Maximize window');
+    maximize.title = maximized ? 'Restore' : 'Maximize';
+    element('window-maximize-icon').hidden = maximized;
+    element('window-restore-icon').hidden = !maximized;
+  }
+  const runWindow = (action: () => Promise<void>) => void action().catch((error) => {
+    console.error(error);
+    showInteractionError('The window command could not be completed.');
+  });
+  const maximizeOrRestore = async () => {
+    await toggleMaximizeWindow();
+    await syncMaximizeButton();
+  };
+  element('window-bar').addEventListener('mousedown', (event) => {
+    if (event.button !== 0 || !(event.target instanceof Element)
+      || event.target.closest('button, #window-menu') || !event.target.closest('[data-window-drag]')) return;
+    runWindow(event.detail === 2 ? maximizeOrRestore : startDragging);
+  });
+  button('window-minimize').addEventListener('click', () => runWindow(minimizeWindow));
+  maximize.addEventListener('click', () => runWindow(maximizeOrRestore));
+  button('window-close').addEventListener('click', () => {
+    persist();
+    runWindow(closeWindow);
+  });
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => void syncMaximizeButton().catch(console.error));
+  });
+  void syncMaximizeButton().catch(console.error);
+}
+
+function showInteractionError(message: string): void {
+  const dialog = document.querySelector('dialog[open]');
+  if (!dialog) {
+    showError(screen === 'reader' ? readerError : screen === 'settings' ? settingsError
+      : screen === 'break' ? breakError : launcherError, message);
+    return;
+  }
+  let status = dialog.querySelector<HTMLElement>('[data-command-error]');
+  if (!status) {
+    status = document.createElement('p');
+    status.className = 'form-error';
+    status.setAttribute('data-command-error', '');
+    status.setAttribute('role', 'alert');
+    dialog.append(status);
+    dialog.addEventListener('close', () => status?.remove(), { once: true });
+  }
+  showError(status, message);
+}
+
+function contextCommands({ source, target }: ContextTarget): ContextCommand[] {
+  const commands: ContextCommand[] = [];
+  const field = target?.closest<HTMLInputElement | HTMLTextAreaElement>('textarea, input[type="search"], input[type="text"]');
+  const fieldValue = field?.value;
+  const start = field?.selectionStart ?? 0;
+  const end = field?.selectionEnd ?? start;
+  const selected = fieldValue !== undefined ? fieldValue.slice(start, end) : source.getSelection()?.toString() ?? '';
+  const withClipboard = (work: () => Promise<void>) => void work().catch(() => showInteractionError('Clipboard access is unavailable.'));
+  if (selected) commands.push({ label: 'Copy', run: () => withClipboard(() => copyText(selected)) });
+  if (field && !field.disabled && !field.readOnly) {
+    function replaceSelection(text: string): void {
+      if (!field?.isConnected || field.value !== fieldValue) return;
+      const room = field.maxLength < 0 ? text.length : Math.max(0, field.maxLength - field.value.length + end - start);
+      field.setRangeText(text.slice(0, room), start, end, 'end');
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      field.focus();
+    }
+    if (selected) commands.push({ label: 'Cut', run: () => withClipboard(async () => {
+      await copyText(selected);
+      replaceSelection('');
+    }) });
+    if (navigator.clipboard?.readText) commands.push({ label: 'Paste', run: () => withClipboard(async () => {
+      replaceSelection(await navigator.clipboard.readText());
+    }) });
+    return commands;
+  }
+  if (document.querySelector('dialog[open]')) return commands;
+
+  const targets = screen === 'reader'
+    ? ['previous-page', 'next-page', 'reader-options', 'add-note', 'review-notes', 'take-break']
+    : screen === 'break' ? ['resume-session', 'break-review-notes', 'end-from-break']
+    : ['choose-file', 'nav-library', 'open-settings'];
+  for (const id of targets) {
+    const action = button(id);
+    if (action.disabled || action.hidden || (screen === 'settings' && id === 'open-settings')) continue;
+    const label = action.getAttribute('aria-label') || action.textContent?.trim();
+    if (label) commands.push({ label, run: () => action.click() });
+  }
+  return commands;
+}
+
+bindContextMenu(element('context-menu'), contextCommands);
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+  if (event.key === 'Escape') {
+    for (const [menu, toggle] of [[appMenu, windowMenuToggle], [sessionMenu, sessionToggle], [readerToolbar, toolbarToggle]] as const) {
+      if (!menu.isPinned()) continue;
+      event.preventDefault();
+      menu.close();
+      toggle.focus();
+      return;
+    }
+  }
   if (event.key === 'Escape' && screen === 'reader') {
     event.preventDefault();
     void takeBreak();
+  }
+  if (screen === 'reader' && !event.ctrlKey && !event.metaKey && !event.altKey
+    && !(event.target instanceof Element && event.target.closest('button, input, textarea, select, [role="menu"]'))) {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      button(event.key === 'ArrowLeft' ? 'previous-page' : 'next-page').click();
+    }
   }
   if (event.key === 'Escape' && screen === 'settings') {
     event.preventDefault();

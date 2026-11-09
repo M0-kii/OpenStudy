@@ -1,4 +1,4 @@
-export type DocumentKind = 'pdf' | 'epub';
+export type DocumentKind = 'pdf' | 'epub' | 'markdown';
 
 export interface PdfPosition {
   kind: 'pdf';
@@ -18,7 +18,13 @@ export interface EpubPosition extends EpubLayout {
   cfi: string;
 }
 
-export type ReadingPosition = PdfPosition | EpubPosition;
+export interface MarkdownPosition {
+  kind: 'markdown';
+  scroll: number;
+  zoom: number;
+}
+
+export type ReadingPosition = PdfPosition | EpubPosition | MarkdownPosition;
 
 export interface ReaderState {
   position: ReadingPosition;
@@ -34,6 +40,7 @@ export interface Reader {
   zoom(delta: number): Promise<void>;
   fit(): Promise<void>;
   setEpubLayout(layout: Partial<EpubLayout>): Promise<void>;
+  setPdfContinuous?(enabled: boolean): Promise<void>;
   find?(query: string): Promise<boolean>;
   destroy(): void;
 }
@@ -57,10 +64,15 @@ export async function openReader(
   initial: ReadingPosition | undefined,
   onChange: (state: ReaderState) => void,
   signal?: AbortSignal,
+  pdfContinuous = false,
 ): Promise<Reader> {
   if (kind === 'pdf') {
     const { openPdf } = await import('./pdf');
-    return openPdf(host, bytes, initial?.kind === 'pdf' ? initial : undefined, onChange, signal);
+    return openPdf(host, bytes, initial?.kind === 'pdf' ? initial : undefined, onChange, signal, pdfContinuous);
+  }
+  if (kind === 'markdown') {
+    const { openMarkdown } = await import('./markdown');
+    return openMarkdown(host, bytes, initial?.kind === 'markdown' ? initial : undefined, onChange, signal);
   }
 
   const { openEpub } = await import('./epub');
@@ -71,6 +83,10 @@ export async function previewDocument(kind: DocumentKind, bytes: ArrayBuffer, si
   if (kind === 'pdf') {
     const { previewPdf } = await import('./pdf');
     return previewPdf(bytes, signal);
+  }
+  if (kind === 'markdown') {
+    const { previewMarkdown } = await import('./markdown');
+    return previewMarkdown(bytes, signal);
   }
 
   const { previewEpub } = await import('./epub');

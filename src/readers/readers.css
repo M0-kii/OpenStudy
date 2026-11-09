@@ -3,7 +3,7 @@
   margin: 20px auto 30px;
   overflow: hidden;
   background: white;
-  box-shadow: 0 4px 24px #0b172844;
+  box-shadow: 0 4px 24px #0004;
 }
 
 .pdf-page canvas {
@@ -16,6 +16,6 @@
   height: 100%;
   max-width: 100%;
   margin-inline: auto;
-  background: #f4f2eb;
-  box-shadow: 0 4px 24px #0b172844;
+  background: #fafafa;
+  box-shadow: 0 4px 24px #0004;
 }

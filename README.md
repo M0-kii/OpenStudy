@@ -13,7 +13,7 @@ Open the latest successful [Build run](https://github.com/M0-kii/OpenStudy/actio
 
 ## Notification settings
 
-Open **Notification settings** in the launcher for setup instructions. On Windows 11 and KDE Plasma, enable your desktop’s fullscreen Do Not Disturb rule. On macOS, you can add OpenStudy to a Focus schedule. That schedule follows the active app and can stay on during a windowed break. On GNOME, use the Do Not Disturb switch in the notification list.
+Open **Settings** from the sidebar to set the default session length, show or hide the countdown while reading, and find notification setup instructions. On Windows 11 and KDE Plasma, enable your desktop’s fullscreen Do Not Disturb rule. On macOS, you can add OpenStudy to a Focus schedule. That schedule follows the active app and can stay on during a windowed break. On GNOME, use the Do Not Disturb switch in the notification list.
 
 ## Build from source
 

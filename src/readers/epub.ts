@@ -10,11 +10,11 @@ const removedAttributes = new Set(['target', 'download', 'ping', 'xml:base', 'sr
 const urlAttributes = new Set(['src', 'href', 'xlink:href', 'poster', 'background']);
 const absoluteUrl = /^(?:[\w+.-]+:|[\\/]{2})/;
 const chapterStyle = `
-  html, body { background: #f4f2eb !important; color: #26333e !important; }
+  html, body { background: #fafafa !important; color: #0a0a0a !important; }
   body { font-size: var(--study-size) !important; line-height: var(--study-leading) !important; }
   :where(p, li, dt, dd, blockquote) { font-size: inherit !important; line-height: var(--study-leading) !important; }
-  a[href] { color: #284867; text-decoration: underline; }
-  :focus-visible { outline: 2px solid #284867; outline-offset: 2px; }
+  a[href] { color: #0a0a0a; text-decoration: underline; }
+  :focus-visible { outline: 2px solid #0a0a0a; outline-offset: 2px; }
 `;
 
 function sanitizeChapter(doc: Document) {

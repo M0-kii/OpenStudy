@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#182631" />
+    <meta name="theme-color" content="#0a0a0a" />
     <title>OpenStudy</title>
     <link rel="icon" href="/ribbon.svg" type="image/svg+xml" />
   </head>
@@ -17,121 +17,145 @@
       <symbol id="i-notes" viewBox="0 0 24 24"><path d="M6 3.5h12v17H6zM9.5 8h5M9.5 12h5M9.5 16h3" /></symbol>
       <symbol id="i-pencil" viewBox="0 0 24 24"><path d="m5 16-1 4 4-1L19 8l-3-3L5 16ZM14.5 6.5l3 3" /></symbol>
       <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6.5v11M15 6.5v11" /></symbol>
-      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></symbol>
-      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M8.5 8.5a3.5 3.5 0 0 1 6.9-1M15.5 10v3l2 3H6.5l2-3v-1.5M10.5 19a2 2 0 0 0 3 0M4.5 19.5l15-15" /></symbol>
+      <symbol id="i-library" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM9 5v14M12 9h5M12 13h5" /></symbol>
       <symbol id="i-options" viewBox="0 0 24 24"><path d="M4 7h6m4 0h6M4 12h11m4 0h1M4 17h2m4 0h10M10 5v4m9 1v4M6 15v4" /></symbol>
     </svg>
 
-    <main class="app">
-      <section id="launcher-screen" class="launcher" aria-label="OpenStudy">
-        <header class="app-header">
-          <div class="app-brand"><img src="/ribbon.svg" alt="" width="22" height="26" /><span>OpenStudy</span></div>
-          <button type="button" id="notification-settings" class="quiet-button"><svg class="icon" aria-hidden="true"><use href="#i-bell" /></svg><span>Notification settings</span></button>
-        </header>
+    <div class="workspace-shell">
+      <aside class="sidebar" aria-label="OpenStudy sidebar">
+        <div class="sidebar-brand app-brand"><img src="/ribbon.svg" alt="" width="19" height="23" /><span>OpenStudy</span></div>
+        <nav class="sidebar-actions" aria-label="Workspace">
+          <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-library" /></svg>Study space</button>
+          <button type="button" id="choose-file" class="sidebar-button"><svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg>Open file</button>
+        </nav>
+        <section class="sidebar-library" aria-labelledby="recent-heading">
+          <h2 id="recent-heading">Recent files</h2>
+          <p id="recent-empty">No recent files</p>
+          <ul id="recent-list" class="recent-list"></ul>
+        </section>
+        <div class="sidebar-footer">
+          <button type="button" id="open-settings" class="sidebar-button" aria-controls="settings-screen"><svg class="icon" aria-hidden="true"><use href="#i-options" /></svg>Settings</button>
+        </div>
+      </aside>
 
-        <div class="launcher-content">
-          <div class="desk">
-            <div class="desk-copy">
-              <h1>Choose what<br class="desktop-break" /> to read.</h1>
-              <p>Open a PDF or EPUB and settle into a fullscreen reading session.</p>
-              <button type="button" id="choose-file" class="button button-primary"><svg class="icon" aria-hidden="true"><use href="#i-file" /></svg>Choose a file</button>
-            </div>
-            <div class="desk-art" aria-hidden="true">
-              <svg class="book-drawing" viewBox="0 0 440 330" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M35 49h19m-9-9v18m343 230h19m-9-9v18" stroke="#627582" />
-                <path d="M37 248 168 282l49-20 47 17 145-32-1 8-146 40-45-15-48 19L36 260z" fill="#111d27" />
-                <path d="M69 131 182 115l40 34 40-37 110 16 32 121-140 34-43-22-49 22-137-32z" fill="#314652" stroke="#71828a" stroke-width="1.4" />
-                <path d="M48 239 174 267l47-21 43 20 127-27-23-117-103-19-44 31-43-28-107 16z" fill="#bdc4bc" stroke="#161f25" stroke-width="1.4" />
-                <path d="M48 239v10l126 29 47-20 43 19 127-30v-8M51 244l123 29 47-21 43 19 124-28" stroke="#182631" stroke-opacity=".62" stroke-width="1.2" />
-                <path d="M48 239c35-6 86-7 126 28 11-9 28-18 47-21-3-36-3-72 0-112-17-16-30-25-43-28-33-13-81-6-107 16z" fill="#d8dcd2" stroke="#182631" stroke-width="1.4" />
-                <path d="M221 134c15-17 32-26 44-31 38-13 74-4 103 19l23 117c-41-7-84-2-127 27-10-10-27-18-43-20-3-36-3-72 0-112Z" fill="#eef0e8" stroke="#182631" stroke-width="1.4" />
-                <path d="M91 139c33-7 71-4 99 15m-103 2c34-7 73-4 102 15m-106 2c32-5 71-4 104 17m-109 1c34-6 76-2 107 17m-111 1c30-5 61 0 85 10m89-65c26-18 67-25 102-17m-103 33c29-18 70-25 106-18m-105 35c28-18 67-27 108-20m-105 36c29-17 66-26 109-19m-104 35c22-14 52-23 85-23" stroke="#657374" stroke-opacity=".62" stroke-width="1.45" stroke-linecap="round" />
-                <path d="M216 242c5 8 16 14 23 17l-5 43-8-9-10 7 7-43-8-10z" fill="#c9ae7a" stroke="#5e523b" stroke-width="1.1" />
-                <path d="M224 261 220 292" stroke="#a1885b" />
-              </svg>
-            </div>
-
-            <section id="selected-document" class="session-setup" aria-labelledby="setup-heading" hidden>
-              <div id="document-preview" class="document-preview" aria-hidden="true"></div>
-              <div class="setup-body">
-                <h1 id="setup-heading">Ready to read.</h1>
-                <p id="selected-name" class="selected-name"></p>
-                <p id="selected-meta" class="selected-meta"></p>
-                <div class="session-options">
-                  <label for="session-minutes">Session length</label>
-                  <select id="session-minutes">
-                    <option value="0">No timer</option>
-                    <option value="15">15 minutes</option>
-                    <option value="25">25 minutes</option>
-                    <option value="45">45 minutes</option>
-                    <option value="60">60 minutes</option>
-                  </select>
-                </div>
-                <div class="setup-actions">
-                  <button type="button" id="start-session" class="button button-primary">Start studying</button>
-                  <button type="button" id="launcher-review-notes" class="quiet-button" hidden>Look up later</button>
-                </div>
-              </div>
-            </section>
-          </div>
+      <main class="study-space">
+        <section id="launcher-screen" class="launcher" aria-labelledby="workspace-title">
+          <header class="workspace-heading"><h1 id="workspace-title" tabindex="-1">Study space</h1></header>
           <p id="launcher-error" class="form-error" role="alert" hidden></p>
+          <p id="launcher-loading" class="workspace-loading" role="status" hidden>Opening document…</p>
+          <div class="workspace-empty">
+            <svg class="icon empty-file-icon" aria-hidden="true"><use href="#i-file" /></svg>
+            <h2>No document open</h2>
+            <p>Choose a PDF or EPUB to start studying.</p>
+            <button type="button" id="choose-file-inline" class="button button-primary">Open file</button>
+          </div>
 
-          <section class="recent" aria-labelledby="recent-heading">
-            <h2 id="recent-heading">Continue reading</h2>
-            <p id="recent-empty">Your recently opened documents will appear here.</p>
-            <ul id="recent-list" class="recent-list"></ul>
+          <section id="selected-document" class="session-setup" aria-labelledby="selected-name" hidden>
+            <div id="document-preview" class="document-preview" aria-hidden="true"></div>
+            <div class="setup-body">
+              <h2 id="selected-name" class="selected-name"></h2>
+              <p id="selected-meta" class="selected-meta"></p>
+              <div class="session-options">
+                <label for="session-minutes">Session length</label>
+                <select id="session-minutes">
+                  <option value="0">No timer</option>
+                  <option value="15">15 minutes</option>
+                  <option value="25">25 minutes</option>
+                  <option value="45">45 minutes</option>
+                  <option value="60">60 minutes</option>
+                </select>
+              </div>
+              <div class="setup-actions">
+                <button type="button" id="start-session" class="button button-primary">Start studying</button>
+                <button type="button" id="choose-another" class="quiet-button">Choose another file</button>
+                <button type="button" id="launcher-review-notes" class="quiet-button" hidden>Look up later</button>
+              </div>
+            </div>
           </section>
-        </div>
-        <footer class="app-footer"><span>PDF and EPUB</span><span>Files stay on this device</span></footer>
-      </section>
+        </section>
 
-      <section id="reader-screen" class="reader" aria-label="Reading session" hidden>
-        <header class="reader-toolbar" aria-label="Reader controls">
-          <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
-          <div class="reader-controls">
-            <div class="control-group" role="group" aria-label="Page navigation">
-              <button type="button" id="previous-page" class="icon-button" title="Previous page" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></button>
-              <output id="reader-location" class="reader-location" aria-live="polite"></output>
-              <button type="button" id="next-page" class="icon-button" title="Next page" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#i-right" /></svg></button>
+        <section id="reader-screen" class="reader" aria-label="Reading session" hidden>
+          <header class="reader-toolbar" aria-label="Reader controls">
+            <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
+            <div class="reader-controls">
+              <div class="control-group" role="group" aria-label="Page navigation">
+                <button type="button" id="previous-page" class="icon-button" title="Previous page" aria-label="Previous page"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg></button>
+                <output id="reader-location" class="reader-location" aria-live="polite"></output>
+                <button type="button" id="next-page" class="icon-button" title="Next page" aria-label="Next page"><svg class="icon" aria-hidden="true"><use href="#i-right" /></svg></button>
+              </div>
+              <div class="control-group zoom-controls" role="group" aria-label="Reading size">
+                <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><svg class="icon" aria-hidden="true"><use href="#i-minus" /></svg></button>
+                <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
+                <button type="button" id="zoom-in" class="icon-button" title="Increase reading size" aria-label="Increase reading size"><svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg></button>
+              </div>
+              <div class="control-group note-controls" role="group" aria-label="Notes">
+                <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><svg class="icon" aria-hidden="true"><use href="#i-pencil" /></svg></button>
+                <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><svg class="icon" aria-hidden="true"><use href="#i-notes" /></svg></button>
+              </div>
+              <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><svg class="icon" aria-hidden="true"><use href="#i-options" /></svg></button>
             </div>
-            <div class="control-group zoom-controls" role="group" aria-label="Reading size">
-              <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><svg class="icon" aria-hidden="true"><use href="#i-minus" /></svg></button>
-              <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
-              <button type="button" id="zoom-in" class="icon-button" title="Increase reading size" aria-label="Increase reading size"><svg class="icon" aria-hidden="true"><use href="#i-plus" /></svg></button>
+            <div class="reader-actions">
+              <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
+              <button type="button" id="take-break" class="button button-outline"><svg class="icon" aria-hidden="true"><use href="#i-pause" /></svg><span>Take a break</span></button>
+              <button type="button" id="end-session" class="quiet-button">End session</button>
             </div>
-            <div class="control-group note-controls" role="group" aria-label="Notes">
-              <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><svg class="icon" aria-hidden="true"><use href="#i-pencil" /></svg></button>
-              <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><svg class="icon" aria-hidden="true"><use href="#i-notes" /></svg></button>
-            </div>
-            <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><svg class="icon" aria-hidden="true"><use href="#i-options" /></svg></button>
-          </div>
-          <div class="reader-actions">
-            <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
-            <button type="button" id="take-break" class="button button-outline"><svg class="icon" aria-hidden="true"><use href="#i-pause" /></svg><span>Take a break</span></button>
-            <button type="button" id="end-session" class="quiet-button">End session</button>
-          </div>
-        </header>
-        <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
-        <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
-      </section>
+          </header>
+          <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
+          <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
+        </section>
 
-      <section id="break-screen" class="break" aria-labelledby="break-heading" hidden>
-        <header class="app-header"><div class="app-brand"><img src="/ribbon.svg" alt="" width="22" height="26" /><span>OpenStudy</span></div></header>
-        <div class="break-main">
-          <div class="break-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><use href="#i-pause" /></svg></div>
-          <h1 id="break-heading">On a break.</h1>
-          <p id="break-title" class="break-title"></p>
-          <p id="break-location" class="break-location"></p>
-          <p id="break-clock" class="break-location" hidden></p>
-          <div class="break-actions">
-            <button type="button" id="resume-session" class="button button-primary">Resume studying</button>
-            <button type="button" id="break-review-notes" class="quiet-button">Look up later</button>
-            <button type="button" id="end-from-break" class="quiet-button">End session</button>
+        <section id="break-screen" class="break" aria-labelledby="break-heading" hidden>
+          <div class="break-main">
+            <h1 id="break-heading">Session paused</h1>
+            <p id="break-title" class="break-title"></p>
+            <p id="break-location" class="break-location"></p>
+            <p id="break-clock" class="break-location" hidden></p>
+            <div class="break-actions">
+              <button type="button" id="resume-session" class="button button-primary">Resume studying</button>
+              <button type="button" id="break-review-notes" class="quiet-button">Look up later</button>
+              <button type="button" id="end-from-break" class="quiet-button">End session</button>
+            </div>
+            <p id="break-error" class="form-error" role="alert" hidden></p>
           </div>
-          <p id="break-error" class="form-error" role="alert" hidden></p>
-        </div>
-      </section>
-    </main>
+        </section>
+
+        <section id="settings-screen" class="settings" aria-labelledby="settings-heading" hidden>
+          <header class="workspace-heading">
+            <button type="button" id="close-settings" class="quiet-button settings-back"><svg class="icon" aria-hidden="true"><use href="#i-left" /></svg>Back</button>
+            <h1 id="settings-heading" tabindex="-1">Settings</h1>
+          </header>
+          <p id="settings-error" class="form-error" role="alert" hidden></p>
+          <section class="settings-list" aria-labelledby="session-settings-heading">
+            <h2 id="session-settings-heading">Study sessions</h2>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label for="default-minutes">Default session length</label>
+                <p id="default-minutes-help">You can change the length before starting a session.</p>
+              </div>
+              <select id="default-minutes" aria-describedby="default-minutes-help">
+                <option value="0">No timer</option>
+                <option value="15">15 minutes</option>
+                <option value="25">25 minutes</option>
+                <option value="45">45 minutes</option>
+                <option value="60">60 minutes</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label for="show-countdown">Show the countdown while reading</label>
+                <p id="show-countdown-help">The timer still tells you when time is up.</p>
+              </div>
+              <input type="checkbox" id="show-countdown" aria-describedby="show-countdown-help" checked />
+            </div>
+          </section>
+          <section class="settings-list" aria-labelledby="notifications-heading">
+            <h2 id="notifications-heading">Notifications</h2>
+            <p id="notifications-description" class="settings-note"></p>
+            <button type="button" id="open-os-settings" class="button button-outline" hidden>Open Windows settings</button>
+          </section>
+        </section>
+      </main>
+    </div>
 
     <dialog id="note-dialog" aria-labelledby="note-heading">
       <form id="note-form" class="dialog-form">
@@ -176,15 +200,6 @@
         <p id="search-result" role="status"></p>
       </form>
       <div class="dialog-actions"><button type="button" id="close-options" class="button button-outline">Done</button></div>
-    </dialog>
-
-    <dialog id="notifications-dialog" aria-labelledby="notifications-heading">
-      <h2 id="notifications-heading">Notification settings</h2>
-      <div id="notifications-description"></div>
-      <div class="dialog-actions">
-        <button type="button" id="open-os-settings" class="button button-outline" hidden>Open Windows settings</button>
-        <button type="button" id="close-notifications" class="button button-outline">Done</button>
-      </div>
     </dialog>
 
     <p id="timer-announcement" class="visually-hidden" role="status"></p>

@@ -2,6 +2,7 @@ import './style.css';
 import { openNotificationSettings, pickDocument, platform, readDocument, setFullscreen } from './desktop';
 import { loadLibrary, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type Reader, type ReaderState, type ReadingPosition } from './readers';
+import { loadSettings, saveSettings, type StudySettings } from './settings';
 import { clockLabel, StudyTimer } from './timer';
 
 function element<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -14,21 +15,29 @@ function button(id: string): HTMLButtonElement {
   return element<HTMLButtonElement>(id);
 }
 
-type Screen = 'launcher' | 'reader' | 'break';
+type Screen = 'launcher' | 'reader' | 'break' | 'settings';
 const screens: Record<Screen, HTMLElement> = {
   launcher: element('launcher-screen'),
   reader: element('reader-screen'),
   break: element('break-screen'),
+  settings: element('settings-screen'),
 };
+const workspace = document.querySelector<HTMLElement>('.workspace-shell');
 const viewport = element('reader-viewport');
 const launcherError = element('launcher-error');
+const launcherLoading = element('launcher-loading');
 const readerError = element('reader-error');
+const breakError = element('break-error');
+const settingsError = element('settings-error');
 const timerSelect = element<HTMLSelectElement>('session-minutes');
+const defaultMinutes = element<HTMLSelectElement>('default-minutes');
+const showCountdown = element<HTMLInputElement>('show-countdown');
+const recentList = element('recent-list');
+const pickerButtons = ['choose-file', 'choose-file-inline', 'choose-another'].map(button);
 const selectedDocument = element('selected-document');
 const preview = element('document-preview');
 const noteDialog = element<HTMLDialogElement>('note-dialog');
 const notesDialog = element<HTMLDialogElement>('notes-dialog');
-const notificationsDialog = element<HTMLDialogElement>('notifications-dialog');
 const optionsDialog = element<HTMLDialogElement>('options-dialog');
 const os = platform();
 
@@ -39,6 +48,8 @@ let reader: Reader | undefined;
 let reading: ReaderState | undefined;
 let timer: StudyTimer | undefined;
 let screen: Screen = 'launcher';
+let settingsReturn: 'launcher' | 'break' = 'launcher';
+let settings = loadSettings();
 let busy = false;
 let readerBusy = false;
 let saveDelay: ReturnType<typeof setTimeout> | undefined;
@@ -51,23 +62,53 @@ function showError(node: HTMLElement, message = ''): void {
 }
 
 function setScreen(next: Screen): void {
+  if (next !== screen) {
+    for (const error of [launcherError, readerError, breakError, settingsError]) showError(error);
+  }
   screen = next;
-  for (const [name, node] of Object.entries(screens)) node.hidden = name !== next;
+  for (const [name, node] of Object.entries(screens)) {
+    node.hidden = name !== next;
+    if (name === next && busy) node.setAttribute('aria-busy', 'true');
+    else node.removeAttribute('aria-busy');
+  }
+  if (workspace) workspace.dataset.session = activeSession() ? 'active' : 'idle';
+  const libraryNav = button('nav-library');
+  const settingsNav = button('open-settings');
+  libraryNav.setAttribute('aria-controls', activeSession() ? 'break-screen' : 'launcher-screen');
+  if (next === 'launcher' || next === 'break') libraryNav.setAttribute('aria-current', 'page');
+  else libraryNav.removeAttribute('aria-current');
+  if (next === 'settings') settingsNav.setAttribute('aria-current', 'page');
+  else settingsNav.removeAttribute('aria-current');
+  syncControls();
+}
+
+function activeSession(): boolean {
+  return screen === 'reader' || screen === 'break' || (screen === 'settings' && settingsReturn === 'break');
+}
+
+function syncControls(): void {
+  const canChoose = !busy && !activeSession();
+  for (const picker of pickerButtons) picker.disabled = !canChoose;
+  for (const row of recentList.querySelectorAll<HTMLButtonElement>('button')) row.disabled = !canChoose;
+  button('nav-library').disabled = busy;
+  button('open-settings').disabled = busy;
+  button('close-settings').disabled = busy;
+  button('start-session').disabled = busy || !selection;
+  button('resume-session').disabled = busy;
+  button('end-from-break').disabled = busy;
+  button('take-break').disabled = busy;
+  button('end-session').disabled = busy;
 }
 
 function setBusy(value: boolean): void {
   busy = value;
-  button('choose-file').disabled = value;
-  button('start-session').disabled = value || !selection;
-  button('resume-session').disabled = value;
-  button('end-from-break').disabled = value;
-  button('take-break').disabled = value;
-  button('end-session').disabled = value;
+  if (value) screens[screen].setAttribute('aria-busy', 'true');
+  else screens[screen].removeAttribute('aria-busy');
+  syncControls();
 }
 
 function renderLibrary(): void {
-  const list = element('recent-list');
-  list.replaceChildren();
+  recentList.replaceChildren();
   element('recent-empty').hidden = library.length > 0;
 
   for (const entry of [...library].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)) {
@@ -75,6 +116,8 @@ function renderLibrary(): void {
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'recent-item';
+    row.disabled = busy || activeSession();
+    if (entry.path === selection?.document.path) row.setAttribute('aria-current', 'true');
     const title = document.createElement('span');
     title.className = 'recent-title';
     title.textContent = entry.title;
@@ -88,7 +131,7 @@ function renderLibrary(): void {
       bytes: await readDocument(entry.path),
     }), 'This file could not be reopened. Choose it again if it has moved.'));
     item.append(row);
-    list.append(item);
+    recentList.append(item);
   }
 }
 
@@ -103,12 +146,14 @@ async function selectDocument(
   pick: () => ReturnType<typeof pickDocument>,
   failure: string,
 ): Promise<void> {
-  if (busy) return;
+  if (busy || activeSession()) return;
+  if (screen === 'settings') setScreen('launcher');
   setBusy(true);
   showError(launcherError);
   try {
     const file = await pick();
     if (!file) return;
+    launcherLoading.hidden = false;
     const extension = file.name.split('.').pop()?.toLowerCase();
     if (extension !== 'pdf' && extension !== 'epub') {
       showError(launcherError, 'Choose a PDF or EPUB file.');
@@ -135,9 +180,10 @@ async function selectDocument(
       preview.append(image);
     }
     element('selected-name').textContent = saved.title;
-    element('selected-meta').textContent = saved.label ? `${cover.details} · ${saved.label}` : cover.details;
+    element('selected-meta').textContent = saved.label ?? cover.details;
     selectedDocument.hidden = false;
     button('launcher-review-notes').hidden = saved.notes.length === 0;
+    renderLibrary();
   } catch (error) {
     console.error(error);
     const password = error instanceof Error && /password/i.test(`${error.name} ${error.message}`);
@@ -146,6 +192,7 @@ async function selectDocument(
     showError(launcherError, password ? 'This PDF is password-protected. Choose an unlocked copy.'
       : size ? 'Choose a document smaller than 256 MB.' : failure);
   } finally {
+    launcherLoading.hidden = true;
     setBusy(false);
     if (selectedDocument.hidden === false && launcherError.hidden) button('start-session').focus();
   }
@@ -153,7 +200,7 @@ async function selectDocument(
 
 function persist(): boolean {
   clearTimeout(saveDelay);
-  if (!selection || screen === 'launcher' || !reading) return false;
+  if (!selection || !activeSession() || !reading) return false;
   const entry = selection.document;
   entry.position = { ...reading.position };
   entry.label = reading.label;
@@ -166,7 +213,7 @@ function persist(): boolean {
     return true;
   } catch (error) {
     console.error(error);
-    showError(screen === 'reader' ? readerError : element('break-error'), 'OpenStudy could not save your reading progress.');
+    showError(screen === 'reader' ? readerError : screen === 'settings' ? settingsError : breakError, 'OpenStudy could not save your reading progress.');
     return false;
   }
 }
@@ -193,7 +240,7 @@ function updateClock(): void {
   for (const id of ['session-clock', 'break-clock']) {
     const clock = document.getElementById(id);
     if (!clock) continue;
-    clock.hidden = remaining === undefined;
+    clock.hidden = remaining === undefined || (id === 'session-clock' && remaining > 0 && !settings.showCountdown);
     if (remaining !== undefined) {
       const label = remaining ? clockLabel(remaining) : 'Time’s up';
       if (clock.textContent !== label) clock.textContent = label;
@@ -209,7 +256,7 @@ function updateClock(): void {
 }
 
 async function startSession(position?: ReadingPosition): Promise<void> {
-  if (busy || !selection) return;
+  if (screen !== 'launcher' || busy || !selection) return;
   setBusy(true);
   showError(readerError);
   const entry = selection.document;
@@ -250,7 +297,7 @@ async function startSession(position?: ReadingPosition): Promise<void> {
 async function takeBreak(): Promise<void> {
   if (screen !== 'reader' || busy || readerBusy) return;
   setBusy(true);
-  showError(element('break-error'));
+  showError(breakError);
   timer?.pause(performance.now());
   persist();
   try {
@@ -270,7 +317,7 @@ async function takeBreak(): Promise<void> {
 async function resumeSession(): Promise<boolean> {
   if (screen !== 'break' || busy) return false;
   setBusy(true);
-  showError(element('break-error'));
+  showError(breakError);
   try {
     await setFullscreen(true);
     setScreen('reader');
@@ -280,7 +327,7 @@ async function resumeSession(): Promise<boolean> {
     return true;
   } catch (error) {
     console.error(error);
-    showError(element('break-error'), 'Could not enter fullscreen. Try resuming again.');
+    showError(breakError, 'Could not enter fullscreen. Try resuming again.');
     return false;
   } finally {
     setBusy(false);
@@ -288,7 +335,7 @@ async function resumeSession(): Promise<boolean> {
 }
 
 async function endSession(): Promise<void> {
-  if (screen === 'launcher' || busy || readerBusy) return;
+  if ((screen !== 'reader' && screen !== 'break') || busy || readerBusy) return;
   setBusy(true);
   try {
     if (screen === 'reader') await setFullscreen(false);
@@ -302,14 +349,14 @@ async function endSession(): Promise<void> {
       element('selected-meta').textContent = selection.document.label ?? selection.document.kind.toUpperCase();
       button('launcher-review-notes').hidden = selection.document.notes.length === 0;
     }
-    timerSelect.value = '0';
+    timerSelect.value = String(settings.defaultMinutes);
     renderLibrary();
     setScreen('launcher');
     updateClock();
     showError(launcherError, saved ? '' : 'OpenStudy could not save your reading progress.');
   } catch (error) {
     console.error(error);
-    showError(readerError, 'Could not end this session. You can still close OpenStudy.');
+    showError(screen === 'break' ? breakError : readerError, 'Could not end this session. You can still close OpenStudy.');
   } finally {
     setBusy(false);
     if (!screens.launcher.hidden) button('choose-file').focus();
@@ -373,10 +420,33 @@ function notificationCopy(): string {
   }
 }
 
-button('choose-file').addEventListener('click', () => void selectDocument(
-  pickDocument,
-  'OpenStudy could not open that file. Choose a readable PDF or EPUB.',
-));
+function changeSettings(next: StudySettings): void {
+  showError(settingsError);
+  try {
+    saveSettings(next);
+    if (next.defaultMinutes !== settings.defaultMinutes) timerSelect.value = String(next.defaultMinutes);
+    settings = next;
+    updateClock();
+  } catch (error) {
+    console.error(error);
+    defaultMinutes.value = String(settings.defaultMinutes);
+    showCountdown.checked = settings.showCountdown;
+    showError(settingsError, 'OpenStudy could not save your settings. Try again.');
+  }
+}
+
+function returnFromSettings(): void {
+  if (screen !== 'settings' || busy) return;
+  setScreen(settingsReturn);
+  button('open-settings').focus();
+}
+
+for (const picker of pickerButtons) {
+  picker.addEventListener('click', () => void selectDocument(
+    pickDocument,
+    'OpenStudy could not open that file. Choose a readable PDF or EPUB.',
+  ));
+}
 button('start-session').addEventListener('click', () => void startSession());
 button('resume-session').addEventListener('click', () => void resumeSession());
 button('take-break').addEventListener('click', () => void takeBreak());
@@ -442,19 +512,32 @@ button('close-notes').addEventListener('click', () => notesDialog.close());
 
 const notificationsDescription = element('notifications-description');
 const osSettingsButton = button('open-os-settings');
+notificationsDescription.textContent = notificationCopy();
 osSettingsButton.hidden = os !== 'windows';
-button('notification-settings').addEventListener('click', () => {
-  notificationsDescription.textContent = notificationCopy();
-  notificationsDialog.showModal();
+defaultMinutes.value = String(settings.defaultMinutes);
+timerSelect.value = String(settings.defaultMinutes);
+showCountdown.checked = settings.showCountdown;
+defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
+showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
+button('open-settings').addEventListener('click', () => {
+  if (busy || (screen !== 'launcher' && screen !== 'break')) return;
+  settingsReturn = screen;
+  setScreen('settings');
+  element('settings-heading').focus();
 });
-button('close-notifications').addEventListener('click', () => notificationsDialog.close());
+button('close-settings').addEventListener('click', returnFromSettings);
+button('nav-library').addEventListener('click', () => {
+  if (busy || screen !== 'settings') return;
+  setScreen(settingsReturn);
+  element(settingsReturn === 'break' ? 'resume-session' : 'workspace-title').focus();
+});
 osSettingsButton.addEventListener('click', async () => {
+  showError(settingsError);
   try {
     await openNotificationSettings();
-    notificationsDialog.close();
   } catch (error) {
     console.error(error);
-    notificationsDescription.textContent = `Open Windows Settings manually. ${notificationCopy()}`;
+    if (screen === 'settings') showError(settingsError, 'Could not open Windows Settings. Open it manually to change notifications.');
   }
 });
 
@@ -463,6 +546,10 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && screen === 'reader') {
     event.preventDefault();
     void takeBreak();
+  }
+  if (event.key === 'Escape' && screen === 'settings') {
+    event.preventDefault();
+    returnFromSettings();
   }
   if (event.key.toLowerCase() === 'o' && (event.ctrlKey || event.metaKey) && screen === 'launcher') {
     event.preventDefault();
@@ -480,6 +567,7 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(updateClock, 250);
 
+setScreen('launcher');
 try {
   library = loadLibrary();
   renderLibrary();

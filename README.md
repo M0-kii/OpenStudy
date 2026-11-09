@@ -36,3 +36,5 @@ pnpm tauri build
 ## Publish a release
 
 Bump the version in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, and the OpenStudy entry in `src-tauri/Cargo.lock` for each release. Use a patch bump for fixes and small improvements. Run `pnpm test`, commit the update, and push an annotated tag that matches the version, such as `v0.1.2`. Write the release notes in the tag annotation. The desktop build publishes a GitHub Release after all three installers pass.
+
+To rebuild a release from an existing tag, run **Desktop builds** manually from `main` and enter the tag in the **release_tag** input.

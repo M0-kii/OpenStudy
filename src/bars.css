@@ -11,11 +11,9 @@
   width: 204px;
   max-width: calc(100vw - 114px);
   padding: 4px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 8px;
   background: var(--surface);
-  box-shadow: 0 7px 20px var(--popover-shadow);
-  transform: translateY(-4px);
 }
 .window-menu-group + .window-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
 .window-menu .quiet-button {
@@ -47,7 +45,7 @@
   gap: 6px 14px;
   margin-inline: 16px;
   padding: 6px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--edge);
   border-radius: 8px;
 }
 .reader-toolbar .reader-file { padding-inline-start: 3px; }

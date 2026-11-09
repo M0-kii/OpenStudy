@@ -9,7 +9,7 @@
   margin: 0 auto;
   overflow: hidden;
   background: white;
-  box-shadow: 0 4px 24px #0004;
+  outline: 1px solid var(--line);
 }
 
 .pdf-page + .pdf-page { margin-top: 24px; }
@@ -30,5 +30,5 @@
   max-width: 100%;
   margin-inline: auto;
   background: #fafafa;
-  box-shadow: 0 4px 24px #0004;
+  outline: 1px solid var(--line);
 }

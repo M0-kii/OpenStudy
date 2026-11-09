@@ -3,6 +3,7 @@ name: Desktop builds
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -73,3 +74,50 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.path }}
           if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: openstudy-release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: OpenStudy-*
+          path: installers
+          merge-multiple: true
+
+      - name: Publish installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          windows=(installers/*.exe)
+          macos=(installers/*.dmg)
+          linux=(installers/*.deb)
+          if (( ${#windows[@]} != 1 || ${#macos[@]} != 1 || ${#linux[@]} != 1 )); then
+            echo "Expected one Windows installer, one macOS disk image, and one Linux package."
+            exit 1
+          fi
+
+          tag="$GITHUB_REF_NAME"
+          draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)
+          assets=("${windows[@]}" "${macos[@]}" "${linux[@]}")
+          if [[ "$draft" == true ]]; then
+            gh release upload "$tag" --clobber "${assets[@]}"
+            gh release edit "$tag" --draft=false
+          elif [[ "$draft" != false ]]; then
+            gh release create "$tag" --verify-tag --title "OpenStudy ${tag#v}" --notes-from-tag "${assets[@]}"
+          fi

@@ -66,6 +66,10 @@ export async function isWindowMaximized(): Promise<boolean> {
   return isTauri() && getCurrentWindow().isMaximized();
 }
 
+export async function setWindowTheme(theme: 'light'|'dark'): Promise<void> {
+  if (isTauri()) await getCurrentWindow().setTheme(theme);
+}
+
 export function openNotificationSettings(): Promise<void> {
   return invoke('open_notification_settings');
 }

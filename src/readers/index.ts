@@ -29,6 +29,7 @@ export type ReadingPosition = PdfPosition | EpubPosition | MarkdownPosition;
 export interface ReaderState {
   position: ReadingPosition;
   label: string;
+  pageCount?: number;
   canPrevious: boolean;
   canNext: boolean;
 }

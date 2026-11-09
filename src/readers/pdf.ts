@@ -123,6 +123,7 @@ export async function openPdf(
     onChange({
       position: { ...current },
       label: `Page ${current.page} of ${pdf.numPages}`,
+      pageCount: pdf.numPages,
       canPrevious: current.page > 1,
       canNext: current.page < pdf.numPages,
     });

@@ -1,13 +1,13 @@
 import {
   createIcons, ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, LogOut, Minus,
-  NotebookPen, PanelLeft, Pause, Pencil, Plus, Settings2, SlidersHorizontal, Square, X,
+  NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Settings2, SlidersHorizontal, Square, X,
 } from 'lucide';
 
 export function drawIcons(): void {
   createIcons({
     icons: {
       ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, LogOut, Minus,
-      NotebookPen, PanelLeft, Pause, Pencil, Plus, Settings2, SlidersHorizontal, Square, X,
+      NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Settings2, SlidersHorizontal, Square, X,
     },
   });
 }

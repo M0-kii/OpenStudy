@@ -1,6 +1,6 @@
 [package]
 name = "openstudy"
-version = "0.1.0"
+version = "0.1.2"
 description = "A desktop space for focused reading"
 edition = "2021"
 rust-version = "1.90"

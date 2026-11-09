@@ -13,11 +13,17 @@
         <img src="/ribbon.svg" alt="" width="16" height="19" draggable="false" />
         <span>OpenStudy</span>
       </div>
-      <button id="window-menu-toggle" type="button" class="icon-button window-menu-toggle" aria-label="App menu" aria-controls="window-menu" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
-      <div id="window-menu" class="window-menu" role="group" aria-label="App commands" inert>
-        <button type="button" class="quiet-button" data-command="choose-file"><i class="icon" data-lucide="folder-open" aria-hidden="true"></i>Open file</button>
-        <button type="button" class="quiet-button" data-command="nav-library"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i>Study space</button>
-        <button type="button" class="quiet-button" data-command="open-settings"><i class="icon" data-lucide="settings-2" aria-hidden="true"></i>Settings</button>
+      <div class="window-menu-dock">
+        <button id="window-menu-toggle" type="button" class="icon-button window-menu-toggle" aria-label="App menu" aria-controls="window-menu" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
+        <div id="window-menu" class="window-menu" role="group" aria-label="App commands" inert>
+          <div class="window-menu-group">
+            <button type="button" class="quiet-button" data-command="choose-file"><i class="icon" data-lucide="folder-open" aria-hidden="true"></i><span>Open file</span><kbd id="open-file-shortcut" aria-hidden="true">Ctrl+O</kbd></button>
+          </div>
+          <div class="window-menu-group">
+            <button type="button" class="quiet-button" data-command="nav-library"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span>Study space</span></button>
+            <button type="button" class="quiet-button" data-command="open-settings"><i class="icon" data-lucide="settings-2" aria-hidden="true"></i><span>Settings</span></button>
+          </div>
+        </div>
       </div>
       <div class="window-spacer" data-window-drag></div>
       <div id="window-controls" class="window-controls" hidden>
@@ -30,18 +36,24 @@
     </header>
 
     <div class="workspace-shell">
-      <aside class="sidebar" aria-label="OpenStudy sidebar">
-        <nav class="sidebar-actions" aria-label="Workspace">
-          <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i>Study space</button>
-          <button type="button" id="choose-file" class="sidebar-button"><i class="icon" data-lucide="plus" aria-hidden="true"></i>Open file</button>
-        </nav>
-        <section class="sidebar-library" aria-labelledby="recent-heading">
-          <h2 id="recent-heading">Recent files</h2>
-          <p id="recent-empty">No recent files</p>
-          <ul id="recent-list" class="recent-list"></ul>
-        </section>
-        <div class="sidebar-footer">
-          <button type="button" id="open-settings" class="sidebar-button" aria-controls="settings-screen"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i>Settings</button>
+      <aside class="workspace-sidebar" aria-label="OpenStudy sidebar">
+        <button type="button" id="sidebar-toggle" class="icon-button sidebar-toggle" aria-label="Collapse sidebar" title="Collapse sidebar" aria-expanded="true" aria-controls="sidebar-content">
+          <span id="sidebar-collapse-icon"><i class="icon" data-lucide="panel-left-close" aria-hidden="true"></i></span>
+          <span id="sidebar-expand-icon" hidden><i class="icon" data-lucide="panel-left-open" aria-hidden="true"></i></span>
+        </button>
+        <div id="sidebar-content" class="sidebar-content">
+          <nav class="sidebar-actions" aria-label="Workspace">
+            <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page" aria-label="Study space" title="Study space"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span class="sidebar-label">Study space</span></button>
+            <button type="button" id="choose-file" class="sidebar-button" aria-label="Open file" title="Open file"><i class="icon" data-lucide="plus" aria-hidden="true"></i><span class="sidebar-label">Open file</span></button>
+          </nav>
+          <section class="sidebar-library" aria-labelledby="recent-heading">
+            <h2 id="recent-heading">Recent files</h2>
+            <p id="recent-empty">No recent files</p>
+            <ul id="recent-list" class="recent-list"></ul>
+          </section>
+          <div class="sidebar-footer">
+            <button type="button" id="open-settings" class="sidebar-button" aria-controls="settings-screen" aria-label="Settings" title="Settings"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i><span class="sidebar-label">Settings</span></button>
+          </div>
         </div>
       </aside>
 
@@ -98,7 +110,17 @@
                 </div>
                 <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
               </div>
-              <output id="reader-location" class="reader-location" aria-hidden="true"></output>
+              <div class="reader-position">
+                <output id="reader-location" class="reader-location" aria-hidden="true"></output>
+                <form id="pdf-page-jump" class="reader-page-jump" aria-label="PDF page navigation" hidden>
+                  <div class="reader-page-counter">
+                    <label class="visually-hidden" for="reader-page">Go to PDF page</label>
+                    <input id="reader-page" type="number" min="1" step="1" required inputmode="numeric" enterkeyhint="go" title="Enter a page number" />
+                    <span id="reader-page-total" aria-hidden="true"></span>
+                  </div>
+                  <input id="reader-progress" type="range" min="1" max="1" value="1" aria-label="Scrub PDF pages" />
+                </form>
+              </div>
             </header>
           </div>
 
@@ -106,12 +128,14 @@
           <p id="reader-location-status" class="visually-hidden" role="status"></p>
           <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
 
-          <div class="reader-bottom" aria-label="Reading navigation">
+          <div class="reader-bottom" role="group" aria-label="Reading navigation">
             <button type="button" id="previous-page" class="icon-button reader-edge-button" title="Previous page" aria-label="Previous page"><i class="icon" data-lucide="chevron-left" aria-hidden="true"></i></button>
             <div class="reader-bottom-right">
-              <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
               <div id="reader-session-dock" class="reader-session-dock">
-                <button type="button" id="reader-session-toggle" class="icon-button reader-edge-button" title="Session controls" aria-label="Session controls" aria-controls="reader-session-card" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
+                <div class="reader-session-trigger">
+                  <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
+                  <button type="button" id="reader-session-toggle" class="icon-button reader-edge-button" title="Session controls" aria-label="Session controls" aria-controls="reader-session-card" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
+                </div>
                 <div id="reader-session-card" class="reader-session-card" role="group" aria-label="Session actions" inert>
                   <div class="session-card-inner">
                     <button type="button" id="take-break" class="quiet-button"><i class="icon" data-lucide="pause" aria-hidden="true"></i>Take a break</button>
@@ -145,8 +169,21 @@
             <h1 id="settings-heading" tabindex="-1">Settings</h1>
           </header>
           <p id="settings-error" class="form-error" role="alert" hidden></p>
-          <section class="settings-list" aria-labelledby="session-settings-heading">
-            <h2 id="session-settings-heading">Study sessions</h2>
+          <div id="settings-categories" class="settings-categories" role="tablist" aria-label="Settings categories">
+            <button type="button" id="settings-tab-appearance" class="quiet-button settings-tab" role="tab" aria-selected="true" aria-controls="settings-appearance">Appearance</button>
+            <button type="button" id="settings-tab-sessions" class="quiet-button settings-tab" role="tab" aria-selected="false" aria-controls="settings-sessions" tabindex="-1">Study sessions</button>
+            <button type="button" id="settings-tab-notifications" class="quiet-button settings-tab" role="tab" aria-selected="false" aria-controls="settings-notifications" tabindex="-1">Notifications</button>
+          </div>
+          <section id="settings-appearance" class="settings-list" role="tabpanel" aria-labelledby="settings-tab-appearance" tabindex="0">
+            <div class="setting-row">
+              <div class="setting-copy"><label for="appearance-theme">Theme</label></div>
+              <select id="appearance-theme">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+              </select>
+            </div>
+          </section>
+          <section id="settings-sessions" class="settings-list" role="tabpanel" aria-labelledby="settings-tab-sessions" tabindex="0" hidden>
             <div class="setting-row">
               <div class="setting-copy">
                 <label for="default-minutes">Default session length</label>
@@ -175,8 +212,7 @@
               <input type="checkbox" id="continuous-pdf" aria-describedby="continuous-pdf-help" />
             </div>
           </section>
-          <section class="settings-list" aria-labelledby="notifications-heading">
-            <h2 id="notifications-heading">Notifications</h2>
+          <section id="settings-notifications" class="settings-list" role="tabpanel" aria-labelledby="settings-tab-notifications" tabindex="0" hidden>
             <p id="notifications-description" class="settings-note"></p>
             <button type="button" id="open-os-settings" class="button button-outline" hidden>Open Windows settings</button>
           </section>

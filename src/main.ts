@@ -1,7 +1,8 @@
 import './style.css';
+import './bars.css';
 import {
   closeWindow, isWindowMaximized, minimizeWindow, openNotificationSettings, pickDocument, platform,
-  readDocument, setFullscreen, startDragging, toggleMaximizeWindow,
+  readDocument, setFullscreen, setWindowTheme, startDragging, toggleMaximizeWindow,
 } from './desktop';
 import { loadLibrary, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type Reader, type ReaderState, type ReadingPosition } from './readers';
@@ -33,11 +34,17 @@ const launcherLoading = element('launcher-loading');
 const readerError = element('reader-error');
 const breakError = element('break-error');
 const settingsError = element('settings-error');
+const settingsCategories = element('settings-categories');
+const settingsTabs = Array.from(settingsCategories.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+const themeSelect = element<HTMLSelectElement>('appearance-theme');
 const timerSelect = element<HTMLSelectElement>('session-minutes');
 const defaultMinutes = element<HTMLSelectElement>('default-minutes');
 const showCountdown = element<HTMLInputElement>('show-countdown');
 const continuousPdf = element<HTMLInputElement>('continuous-pdf');
 const readerContinuousPdf = element<HTMLInputElement>('reader-continuous-pdf');
+const pdfPageJump = element<HTMLFormElement>('pdf-page-jump');
+const readerPage = element<HTMLInputElement>('reader-page');
+const readerProgress = element<HTMLInputElement>('reader-progress');
 const recentList = element('recent-list');
 const pickerButtons = ['choose-file', 'choose-file-inline', 'choose-another'].map(button);
 const selectedDocument = element('selected-document');
@@ -47,6 +54,7 @@ const notesDialog = element<HTMLDialogElement>('notes-dialog');
 const optionsDialog = element<HTMLDialogElement>('options-dialog');
 const os = platform();
 const windowMenuToggle = button('window-menu-toggle');
+const sidebarToggle = button('sidebar-toggle');
 const toolbarToggle = button('reader-toolbar-toggle');
 const sessionToggle = button('reader-session-toggle');
 const windowMenu = element('window-menu');
@@ -54,6 +62,7 @@ const windowCommands = Array.from(windowMenu.querySelectorAll<HTMLButtonElement>
 const appMenu = disclosure(windowMenuToggle, windowMenu);
 const readerToolbar = disclosure(toolbarToggle, element('reader-toolbar'), element('reader-chrome'));
 const sessionMenu = disclosure(sessionToggle, element('reader-session-card'), element('reader-session-dock'));
+if (os === 'macos') element('open-file-shortcut').textContent = '⌘O';
 drawIcons();
 
 let library: SavedDocument[] = [];
@@ -67,6 +76,7 @@ let settingsReturn: 'launcher' | 'break' = 'launcher';
 let settings = loadSettings();
 let busy = false;
 let readerBusy = false;
+let queuedPdfPage: number | undefined;
 let saveDelay: ReturnType<typeof setTimeout> | undefined;
 let announced = false;
 let canSave = true;
@@ -78,6 +88,7 @@ function showError(node: HTMLElement, message = ''): void {
 
 function setScreen(next: Screen): void {
   if (next !== screen) {
+    queuedPdfPage = undefined;
     for (const error of [launcherError, readerError, breakError, settingsError]) showError(error);
     appMenu.close();
     readerToolbar.close();
@@ -116,7 +127,13 @@ function syncControls(): void {
   button('end-from-break').disabled = busy;
   button('take-break').disabled = busy;
   button('end-session').disabled = busy;
-  for (const command of windowCommands) command.disabled = button(command.dataset.command!).disabled;
+  for (const command of windowCommands) {
+    const source = button(command.dataset.command!);
+    command.disabled = source.disabled;
+    const current = source.getAttribute('aria-current');
+    if (current) command.setAttribute('aria-current', current);
+    else command.removeAttribute('aria-current');
+  }
 }
 
 function setBusy(value: boolean): void {
@@ -137,10 +154,11 @@ function renderLibrary(): void {
     row.className = 'recent-item';
     row.disabled = busy || activeSession();
     if (entry.path === selection?.document.path) row.setAttribute('aria-current', 'true');
-    const title = document.createElement('span');
+    const title = document.createElement('bdi');
     title.className = 'recent-title';
     title.textContent = entry.title;
-    const detail = document.createElement('span');
+    row.title = entry.title;
+    const detail = document.createElement('bdi');
     detail.className = 'recent-meta';
     detail.textContent = entry.label ?? kindLabel(entry.kind);
     row.append(title, detail);
@@ -247,7 +265,24 @@ function persist(): boolean {
 
 function updateReading(state: ReaderState): void {
   reading = state;
-  element('reader-location').textContent = state.label;
+  const location = element('reader-location');
+  const pdf = state.position.kind === 'pdf' && !!state.pageCount;
+  location.textContent = state.label;
+  location.hidden = pdf;
+  pdfPageJump.hidden = !pdf;
+  if (state.position.kind === 'pdf' && state.pageCount) {
+    const page = String(state.position.page);
+    const total = String(state.pageCount);
+    readerPage.max = total;
+    if (document.activeElement !== readerPage) readerPage.value = page;
+    readerProgress.max = total;
+    readerProgress.disabled = state.pageCount === 1;
+    if (!readerProgress.matches(':active')) {
+      readerProgress.value = page;
+      readerProgress.setAttribute('aria-valuetext', state.label);
+    }
+    element('reader-page-total').textContent = `/ ${total}`;
+  }
   const locationStatus = element('reader-location-status');
   if (locationStatus.textContent !== state.label) locationStatus.textContent = state.label;
   element('break-location').textContent = state.label;
@@ -292,6 +327,8 @@ async function startSession(position?: ReadingPosition): Promise<void> {
   try {
     element('reader-title').textContent = entry.title;
     element('break-title').textContent = entry.title;
+    pdfPageJump.hidden = true;
+    element('reader-location').hidden = false;
     element('reader-location').textContent = '';
     element('reader-location-status').textContent = '';
     element('pdf-search-form').hidden = entry.kind !== 'pdf';
@@ -408,6 +445,7 @@ async function endSession(): Promise<void> {
 async function readerAction(action: (active: Reader) => Promise<unknown>): Promise<void> {
   if (!reader || readerBusy || busy || screen !== 'reader') return;
   readerBusy = true;
+  viewport.setAttribute('aria-busy', 'true');
   showError(readerError);
   try {
     await action(reader);
@@ -416,6 +454,12 @@ async function readerAction(action: (active: Reader) => Promise<unknown>): Promi
     showError(readerError, 'Could not complete that reading action. Try again.');
   } finally {
     readerBusy = false;
+    viewport.removeAttribute('aria-busy');
+    if (queuedPdfPage !== undefined) {
+      const page = queuedPdfPage;
+      queuedPdfPage = undefined;
+      void jumpToPdfPage(page);
+    }
   }
 }
 
@@ -468,6 +512,8 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     saveSettings(next);
     if (next.defaultMinutes !== settings.defaultMinutes) timerSelect.value = String(next.defaultMinutes);
     settings = next;
+    applySidebarLayout();
+    applyAppearance();
     continuousPdf.checked = settings.pdfContinuous;
     readerContinuousPdf.checked = settings.pdfContinuous;
     updateClock();
@@ -476,11 +522,52 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     console.error(error);
     defaultMinutes.value = String(settings.defaultMinutes);
     showCountdown.checked = settings.showCountdown;
+    themeSelect.value = settings.theme;
     continuousPdf.checked = settings.pdfContinuous;
     readerContinuousPdf.checked = settings.pdfContinuous;
     showError(errorNode, 'OpenStudy could not save your settings. Try again.');
     return false;
   }
+}
+
+function applyAppearance(): void {
+  const theme = settings.theme;
+  if (document.documentElement.dataset.theme === theme) return;
+  document.documentElement.dataset.theme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#fafafa' : '#0a0a0a');
+  void setWindowTheme(theme).catch(console.error);
+}
+
+function selectSettingsTab(selected: HTMLButtonElement): void {
+  for (const tab of settingsTabs) {
+    const active = tab === selected;
+    tab.setAttribute('aria-selected', String(active));
+    tab.tabIndex = active ? 0 : -1;
+    element(tab.getAttribute('aria-controls')!).hidden = !active;
+  }
+}
+
+for (const tab of settingsTabs) tab.addEventListener('click', () => selectSettingsTab(tab));
+settingsCategories.addEventListener('keydown', (event) => {
+  const current = settingsTabs.indexOf(event.target as HTMLButtonElement);
+  if (current < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const last = settingsTabs.length - 1;
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? last
+    : (current + (event.key === 'ArrowRight' ? 1 : -1) + settingsTabs.length) % settingsTabs.length;
+  selectSettingsTab(settingsTabs[next]);
+  settingsTabs[next].focus();
+});
+
+function applySidebarLayout(): void {
+  const collapsed = settings.sidebarCollapsed;
+  if (workspace) workspace.dataset.sidebar = collapsed ? 'collapsed' : 'expanded';
+  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+  sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
+  sidebarToggle.setAttribute('aria-label', label);
+  sidebarToggle.title = label;
+  element('sidebar-collapse-icon').hidden = collapsed;
+  element('sidebar-expand-icon').hidden = !collapsed;
 }
 
 function returnFromSettings(): void {
@@ -502,6 +589,30 @@ button('end-session').addEventListener('click', () => void endSession());
 button('end-from-break').addEventListener('click', () => void endSession());
 button('previous-page').addEventListener('click', () => void readerAction((active) => active.previous()));
 button('next-page').addEventListener('click', () => void readerAction((active) => active.next()));
+async function jumpToPdfPage(page: number): Promise<void> {
+  const position = reading?.position;
+  if (screen !== 'reader' || busy || position?.kind !== 'pdf' || !Number.isInteger(page)
+    || page < 1 || page > (reading?.pageCount ?? 0)) return;
+  if (readerBusy) {
+    queuedPdfPage = page;
+    return;
+  }
+  await readerAction((active) => active.goTo({ ...position, page, scroll: 0 }));
+  if (reading?.position.kind === 'pdf') readerPage.value = String(reading.position.page);
+}
+
+pdfPageJump.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void jumpToPdfPage(readerPage.valueAsNumber);
+});
+readerPage.addEventListener('blur', (event) => {
+  if (event.relatedTarget instanceof Node && pdfPageJump.contains(event.relatedTarget)) return;
+  if (reading?.position.kind === 'pdf') readerPage.value = String(reading.position.page);
+});
+readerProgress.addEventListener('input', () => {
+  readerProgress.setAttribute('aria-valuetext', `Page ${readerProgress.value} of ${readerProgress.max}`);
+});
+readerProgress.addEventListener('change', () => void jumpToPdfPage(readerProgress.valueAsNumber));
 button('zoom-in').addEventListener('click', () => void readerAction((active) => active.zoom(1)));
 button('zoom-out').addEventListener('click', () => void readerAction((active) => active.zoom(-1)));
 button('fit-width').addEventListener('click', () => {
@@ -581,11 +692,20 @@ osSettingsButton.hidden = os !== 'windows';
 defaultMinutes.value = String(settings.defaultMinutes);
 timerSelect.value = String(settings.defaultMinutes);
 showCountdown.checked = settings.showCountdown;
+themeSelect.value = settings.theme;
 continuousPdf.checked = settings.pdfContinuous;
 readerContinuousPdf.checked = settings.pdfContinuous;
 defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
 showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
+themeSelect.addEventListener('change', () => changeSettings({
+  ...settings,
+  theme: themeSelect.value === 'light' ? 'light' : 'dark',
+}));
 continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
+sidebarToggle.addEventListener('click', () => {
+  const errorNode = screen === 'settings' ? settingsError : screen === 'break' ? breakError : launcherError;
+  changeSettings({ ...settings, sidebarCollapsed: !settings.sidebarCollapsed }, errorNode);
+});
 button('open-settings').addEventListener('click', () => {
   if (busy || (screen !== 'launcher' && screen !== 'break')) return;
   settingsReturn = screen;
@@ -759,6 +879,8 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(updateClock, 250);
 
+applySidebarLayout();
+applyAppearance();
 setScreen('launcher');
 try {
   library = loadLibrary();

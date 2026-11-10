@@ -1,8 +1,8 @@
 import MarkdownIt from 'markdown-it';
 import './markdown.css';
 import './readers.css';
-import { findPattern, findText, highlightMatch, indexText, matchRange, type TextMatch } from './find';
-import { bounded, type DocumentPreview, type FindDirection, type MarkdownPosition, type Reader, type ReaderState } from './index';
+import { emptyFindResult, findPattern, highlightMatch, indexText, matchRange, selectMatch, textMatches, type TextMatch } from './find';
+import { bounded, type DocumentPreview, type FindDirection, type FindResult, type MarkdownPosition, type Reader, type ReaderState, type ReadingPosition } from './index';
 
 const markdown = new MarkdownIt({ html: false, linkify: false });
 type Token = ReturnType<typeof markdown.parse>[number];
@@ -96,9 +96,10 @@ export function openMarkdown(
   const firstLevel = Math.min(...headings.map((heading) => Number(heading.tagName[1])));
   let zoom = 1;
   let closed = false;
-  let search: { query: string; match: TextMatch } | undefined;
+  let search: { query: string; matches: TextMatch[]; match: TextMatch } | undefined;
   let unhighlight: (() => void) | undefined;
   let indexed: ReturnType<typeof indexText> | undefined;
+  let currentHeading: HTMLElement | undefined;
   host.replaceChildren(article);
 
   function scrollRange(): number {
@@ -109,7 +110,7 @@ export function openMarkdown(
     return range ? bounded(host.scrollTop / range, 0, 0, 1) : 0;
   }
 
-  function labelAtScroll(scroll: number): string {
+  function headingAtTop(): HTMLElement | undefined {
     const top = host.scrollTop - article.offsetTop + 32;
     let start = 0;
     let end = headings.length;
@@ -118,16 +119,19 @@ export function openMarkdown(
       if (headings[middle].offsetTop <= top) start = middle + 1;
       else end = middle;
     }
-    return headings[start - 1]?.textContent?.trim().slice(0, 160) || `Document, ${Math.round(scroll * 100)}%`;
+    const firstHeading = headings[0];
+    if (start === 0 && firstHeading && firstHeading.offsetTop <= top + Math.min(100, host.clientHeight / 4)) return firstHeading;
+    return headings[start - 1];
   }
 
   function notify() {
     if (closed || !host.clientHeight) return;
     const range = scrollRange();
     const scroll = scrollFraction(range);
+    currentHeading = headingAtTop();
     onChange({
       position: { kind: 'markdown', scroll, zoom },
-      label: labelAtScroll(scroll),
+      label: currentHeading?.textContent?.trim().slice(0, 160) || `Document, ${Math.round(scroll * 100)}%`,
       canPrevious: host.scrollTop > 1,
       canNext: host.scrollTop < range - 1,
     });
@@ -168,22 +172,24 @@ export function openMarkdown(
     unhighlight = undefined;
   }
 
-  async function find(query: string, direction: FindDirection = 'next') {
+  async function find(query: string, direction: FindDirection = 'next'): Promise<FindResult> {
     const pattern = findPattern(query);
-    if (!pattern || closed) return false;
+    if (!pattern || closed) return emptyFindResult;
     indexed ??= indexText(article);
-    const previous = search?.query === pattern.source ? search.match : undefined;
+    const cached = search?.query === pattern.source ? search : undefined;
+    const previous = cached?.match;
     const from = previous && previous.index + (direction === 'next' ? previous.length : 0);
-    const match = findText(indexed.text, pattern, direction, from) ?? findText(indexed.text, pattern, direction);
+    const matches = cached?.matches ?? textMatches(indexed.text, pattern);
+    const match = selectMatch(matches, direction, from) ?? selectMatch(matches, direction);
     const range = match && matchRange(indexed, match);
     clearFind();
-    if (!match || !range) return false;
-    search = { query: pattern.source, match };
+    if (!match || !range) return emptyFindResult;
+    search = { query: pattern.source, matches, match };
     const top = range.getBoundingClientRect().top - host.getBoundingClientRect().top - host.clientHeight / 4;
     host.scrollTop += top;
     unhighlight = highlightMatch(range, article);
     notify();
-    return true;
+    return { found: true, index: matches.indexOf(match) + 1, count: matches.length, complete: true, counting: false };
   }
 
   function destroy() {
@@ -212,7 +218,11 @@ export function openMarkdown(
     setEpubLayout: async () => {},
     contents: async () => closed ? [] : headings.flatMap((heading) => {
       const label = heading.textContent?.trim();
-      return label ? [{ label, depth: Number(heading.tagName[1]) - firstLevel, goTo: async () => goToHeading(heading) }] : [];
+      return label ? [{
+        label, depth: Number(heading.tagName[1]) - firstLevel,
+        current: (position: ReadingPosition) => position.kind === 'markdown' && currentHeading === heading,
+        goTo: async () => goToHeading(heading),
+      }] : [];
     }),
     find,
     clearFind,

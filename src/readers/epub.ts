@@ -4,8 +4,8 @@ import type { Location } from 'epubjs/types/rendition';
 import type Section from 'epubjs/types/section';
 import './readers.css';
 import { flattenContents } from './contents';
-import { findGroups, findPattern, findText, indexText, matchRange, type GroupMatch } from './find';
-import { bounded, epubDefaults, type DocumentPreview, type EpubLayout, type EpubPosition, type FindDirection, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
+import { emptyFindResult, findGroups, findPattern, groupedMatches, indexText, matchRange, selectMatch, type GroupMatch } from './find';
+import { bounded, epubDefaults, type DocumentPreview, type EpubLayout, type EpubPosition, type FindDirection, type FindResult, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
 
 const chapterPolicy = "default-src 'none'; style-src 'unsafe-inline' blob: data:; img-src blob: data:; font-src blob: data:; media-src blob: data:; base-uri 'self'; form-action 'none'";
 const activeElements = new Set(['applet', 'embed', 'fencedframe', 'foreignobject', 'frame', 'frameset', 'iframe', 'object', 'portal', 'script', 'template', 'animate', 'animatemotion', 'animatetransform', 'set']);
@@ -134,6 +134,8 @@ export async function openEpub(
   let sectionIndex = 0;
   let outline: Promise<ReaderContentsEntry[]> | undefined;
   let search: { query: string; match: GroupMatch } | undefined;
+  let matches: ReturnType<typeof groupedMatches> | undefined;
+  let indexedChapter: { group: number; text: ReturnType<typeof indexText> } | undefined;
   let searchId = 0;
   let marked: string | undefined;
   let dimensions = { width: 0, height: 0 };
@@ -276,12 +278,43 @@ export async function openEpub(
         const label = typeof item.label === 'string' ? item.label.trim() : '';
         const target = chapterTarget(item.href);
         if (!label || !target) return undefined;
+        const section = book.spine.get(target);
+        const hash = target.indexOf('#');
+        let fragment = hash < 0 ? '' : target.slice(hash + 1);
+        try { fragment = decodeURIComponent(fragment); } catch { /* Keep a malformed ID literal. */ }
+        const fragmentCfi = () => {
+          if (!fragment || !section || section.index !== sectionIndex) return undefined;
+          const contents = (rendition.getContents() as unknown as Contents[]).find((view) => view.sectionIndex === section.index);
+          const marker = contents?.document?.getElementById(fragment);
+          try {
+            return marker ? section.cfiFromElement(marker) : undefined;
+          } catch {
+            return undefined;
+          }
+        };
         return {
           label, depth,
+          current: (position) => {
+            if (position.kind !== 'epub' || !section || section.index !== sectionIndex) return false;
+            if (!fragment) return true;
+            const cfi = fragmentCfi();
+            try {
+              return !!cfi && rendition.epubcfi.compare(cfi, position.cfi) <= 0;
+            } catch {
+              return false;
+            }
+          },
           goTo: async () => {
             if (closed) return;
             anchor = '';
             await display(target);
+            if (closed || !fragment) return;
+            // A page can start before its fragment even after an explicit contents jump.
+            const cfi = fragmentCfi();
+            if (cfi) {
+              anchor = cfi;
+              relocated(await rendition.currentLocation() as unknown as Location);
+            }
           },
         };
       }));
@@ -295,48 +328,57 @@ export async function openEpub(
   function clearFind() {
     searchId++;
     search = undefined;
+    matches = undefined;
+    indexedChapter = undefined;
     clearMarker();
   }
 
-  async function matchSection(section: Section, pattern: RegExp, direction: FindDirection, from?: number) {
-    const wasLoaded = Boolean(section.document);
-    try {
-      await section.load(book.load.bind(book));
-      const body = section.document?.querySelector('body');
-      if (!body || closed) return undefined;
-      const text = indexText(body);
-      const match = findText(text.text, pattern, direction, from);
-      const range = match && matchRange(text, match);
-      if (!match || !range) return undefined;
-      return { match, cfi: section.cfiFromRange(range) };
-    } catch {
-      return undefined;
-    } finally {
-      if (!wasLoaded && !closed) section.unload();
-    }
+  async function chapterText(group: number): Promise<ReturnType<typeof indexText>> {
+    if (indexedChapter?.group === group) return indexedChapter.text;
+    // Read a separate document so background search never loads or unloads a rendition's section.
+    const doc = await limit(book.load(sections[group].url), 'This EPUB section could not be searched.', signal);
+    if (closed || !(doc instanceof Document)) throw new Error('This EPUB section could not be searched.');
+    sanitizeChapter(doc);
+    const body = doc.querySelector('body');
+    if (!body) throw new Error('This EPUB section has no readable body.');
+    const text = indexText(body);
+    indexedChapter = { group, text };
+    return text;
   }
 
-  async function find(query: string, direction: FindDirection = 'next') {
+  async function find(query: string, direction: FindDirection = 'next', onProgress?: (result: FindResult) => void): Promise<FindResult> {
     const pattern = findPattern(query);
-    if (!pattern || closed || !sections.length) return false;
+    if (!pattern || closed || !sections.length) return emptyFindResult;
     const currentSearch = ++searchId;
+    const active = () => !closed && currentSearch === searchId;
+    const index = matches?.query === pattern.source ? matches : groupedMatches(pattern, sections.length, async (group) => (await chapterText(group)).text);
+    matches = index;
     const previous = search?.query === pattern.source ? search.match : undefined;
     for (const { group, from } of findGroups(sections.length, sectionIndex, direction, previous)) {
-      if (closed || currentSearch !== searchId) return false;
-      const result = await matchSection(sections[group], pattern, direction, from);
-      if (!result) continue;
-      if (closed || currentSearch !== searchId) return false;
+      if (!active()) return emptyFindResult;
+      const match = selectMatch(await index.read(group), direction, from);
+      if (!match) continue;
+      if (!active()) return emptyFindResult;
+      const range = matchRange(await chapterText(group), match);
+      if (!active()) return emptyFindResult;
+      if (!range) throw new Error('This EPUB match could not be displayed.');
+      const cfi = sections[group].cfiFromRange(range);
+      const selected = { ...match, group };
       clearMarker();
-      search = { query: pattern.source, match: { ...result.match, group } };
-      anchor = result.cfi;
-      await display(result.cfi);
-      if (closed || currentSearch !== searchId) return false;
-      marked = result.cfi;
+      search = { query: pattern.source, match: selected };
+      anchor = cfi;
+      await display(cfi);
+      if (!active()) return emptyFindResult;
+      marked = cfi;
       rendition.annotations.highlight(marked, undefined, undefined, 'openstudy-find-hit', { fill: '#f6c453', 'fill-opacity': '.45' });
-      return true;
+      const result = index.result(selected);
+      if (result.counting && onProgress) void index.countRest(active, () => onProgress(index.result(selected)));
+      return result;
     }
-    if (currentSearch === searchId) clearFind();
-    return false;
+    if (!active()) return emptyFindResult;
+    const result = index.result();
+    clearFind();
+    return result;
   }
 
   function destroy() {

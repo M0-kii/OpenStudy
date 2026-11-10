@@ -2437,8 +2437,9 @@ dependencies = [
 
 [[package]]
 name = "openstudy"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
+ "futures-util",
  "reqwest",
  "serde",
  "serde_json",

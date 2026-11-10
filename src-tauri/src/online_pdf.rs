@@ -1,12 +1,25 @@
 use crate::MAX_DOCUMENT_BYTES;
+use futures_util::future::{AbortHandle, AbortRegistration, Abortable};
 use reqwest::{header, redirect, Client, Url};
-use std::time::Duration;
-use tauri::ipc::Response;
+use std::{sync::Mutex, time::Duration};
+use tauri::{ipc::Response, Manager, Resource, ResourceId, WebviewWindow};
 
 const HEADER_LIMIT: usize = 1024;
 const MAX_REDIRECTS: usize = 5;
 const TOO_LARGE: &str = "Choose a PDF smaller than 256 MB.";
 const NOT_PDF: &str = "This URL did not return a PDF.";
+const CANCELLED: &str = "The PDF download was cancelled.";
+
+struct Download {
+    abort: AbortHandle,
+    registration: Mutex<Option<AbortRegistration>>,
+}
+
+impl Resource for Download {
+    fn close(self: std::sync::Arc<Self>) {
+        self.abort.abort();
+    }
+}
 
 fn allowed_url(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https")
@@ -40,7 +53,43 @@ fn download_error(error: reqwest::Error) -> String {
 }
 
 #[tauri::command]
-pub async fn read_online_pdf(url: String) -> Result<Response, String> {
+pub fn prepare_online_pdf(window: WebviewWindow) -> ResourceId {
+    let (abort, registration) = AbortHandle::new_pair();
+    window.resources_table().add(Download {
+        abort,
+        registration: Mutex::new(Some(registration)),
+    })
+}
+
+#[tauri::command]
+pub fn cancel_online_pdf(window: WebviewWindow, request: ResourceId) {
+    if let Ok(download) = window.resources_table().take::<Download>(request) {
+        download.close();
+    }
+}
+
+#[tauri::command]
+pub async fn read_online_pdf(
+    window: WebviewWindow,
+    request: ResourceId,
+    url: String,
+) -> Result<Response, String> {
+    let download = window
+        .resources_table()
+        .get::<Download>(request)
+        .map_err(|_| CANCELLED)?;
+    let registration = download
+        .registration
+        .lock()
+        .map_err(|_| CANCELLED)?
+        .take()
+        .ok_or(CANCELLED)?;
+    let result = Abortable::new(download_pdf(&url), registration).await;
+    let _ = window.resources_table().take::<Download>(request);
+    result.map_err(|_| CANCELLED)?
+}
+
+async fn download_pdf(url: &str) -> Result<Response, String> {
     let url = Url::parse(url.trim()).map_err(|_| "Enter a valid HTTP or HTTPS PDF link.")?;
     if !allowed_url(&url) {
         return Err("Use an HTTP or HTTPS link without a username or password.".into());

@@ -45,8 +45,6 @@
         <div id="sidebar-content" class="sidebar-content">
           <nav class="sidebar-actions" aria-label="Workspace">
             <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page" aria-label="Study space" title="Study space"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span class="sidebar-label">Study space</span></button>
-            <button type="button" id="choose-file" class="sidebar-button" aria-label="Open file" title="Open file"><i class="icon" data-lucide="plus" aria-hidden="true"></i><span class="sidebar-label">Open file</span></button>
-            <button type="button" id="open-link" class="sidebar-button" aria-label="Open PDF link" title="Open PDF link"><i class="icon" data-lucide="link-2" aria-hidden="true"></i><span class="sidebar-label">Open PDF link</span></button>
           </nav>
           <section class="sidebar-library" aria-labelledby="recent-heading">
             <h2 id="recent-heading">Recent files</h2>
@@ -61,25 +59,44 @@
 
       <main class="study-space">
         <section id="launcher-screen" class="launcher" aria-labelledby="workspace-title">
-          <header class="workspace-heading"><h1 id="workspace-title" tabindex="-1">Study space</h1></header>
-          <p id="launcher-error" class="form-error" role="alert" hidden></p>
-          <button type="button" id="reconnect-document" class="button button-outline reconnect-document" hidden>Locate file</button>
-          <p id="launcher-loading" class="workspace-loading" role="status" hidden>Opening document…</p>
-          <button type="button" id="continue-reading" class="continue-reading" hidden>
-            <span class="continue-copy">
-              <span class="continue-label">Continue reading</span>
-              <bdi id="continue-title"></bdi>
-            </span>
-            <bdi id="continue-location"></bdi>
-            <i class="icon" data-lucide="chevron-right" aria-hidden="true"></i>
-          </button>
+          <header class="workspace-heading launcher-heading">
+            <h1 id="workspace-title" tabindex="-1">Study space</h1>
+            <div id="open-source-dock" class="open-source-dock">
+              <button type="button" id="open-source" class="button button-outline" aria-expanded="false" aria-controls="open-source-menu">
+                <i class="icon" data-lucide="plus" aria-hidden="true"></i>Open…
+              </button>
+              <div id="open-source-menu" class="window-menu" role="group" aria-label="Open a document" inert>
+                <button type="button" id="choose-file" class="quiet-button"><i class="icon" data-lucide="folder-open" aria-hidden="true"></i><span>Open file</span></button>
+                <button type="button" id="open-link" class="quiet-button"><i class="icon" data-lucide="link-2" aria-hidden="true"></i><span>Open PDF link</span></button>
+              </div>
+            </div>
+          </header>
+          <div class="launcher-feedback">
+            <p id="launcher-error" class="form-error" role="alert" hidden></p>
+            <div class="setup-actions">
+              <button type="button" id="retry-online" class="button button-outline" hidden>Retry</button>
+              <button type="button" id="reconnect-document" class="quiet-button" hidden>Locate file</button>
+            </div>
+            <div id="launcher-loading" class="workspace-loading" hidden>
+              <p id="launcher-loading-text" role="status">Opening document…</p>
+              <button type="button" id="cancel-online" class="quiet-button" hidden>Cancel</button>
+            </div>
+          </div>
+          <section id="continue-document" class="continue-document" aria-labelledby="continue-title" hidden>
+            <div class="continue-type"><i class="icon" data-lucide="file-text" aria-hidden="true"></i><span id="continue-kind"></span></div>
+            <h2 id="continue-title" dir="auto"></h2>
+            <p id="continue-location" dir="auto"></p>
+            <div class="setup-actions">
+              <button type="button" id="continue-reading" class="button button-primary">Continue reading<i class="icon" data-lucide="chevron-right" aria-hidden="true"></i></button>
+              <button type="button" id="continue-review-notes" class="quiet-button" hidden>Look up later</button>
+            </div>
+          </section>
           <div class="workspace-empty">
             <svg class="icon empty-file-icon" aria-hidden="true"><use href="#i-file" /></svg>
-            <h2>No document open</h2>
-            <p>Open a PDF, EPUB, or Markdown file.</p>
+            <h2>Open a document to start</h2>
+            <p>Read a PDF, EPUB, or Markdown file.</p>
             <div class="setup-actions">
               <button type="button" id="choose-file-inline" class="button button-primary">Open file</button>
-              <button type="button" id="open-link-inline" class="quiet-button">Open PDF link</button>
             </div>
           </div>
 
@@ -100,7 +117,6 @@
               </div>
               <div class="setup-actions">
                 <button type="button" id="start-session" class="button button-primary">Start studying</button>
-                <button type="button" id="choose-another" class="quiet-button">Choose another file</button>
                 <button type="button" id="launcher-review-notes" class="quiet-button" hidden>Look up later</button>
               </div>
               <p class="break-hint"><kbd>Esc</kbd> to take a break.</p>
@@ -115,14 +131,29 @@
 
         <section id="reader-screen" class="reader" aria-label="Reading session" hidden>
           <div id="reader-chrome" class="reader-chrome">
-            <button id="reader-toolbar-toggle" type="button" class="reader-top-edge" aria-label="Reading toolbar" aria-controls="reader-toolbar" aria-expanded="false"><span></span></button>
+            <button id="reader-toolbar-toggle" type="button" class="reader-top-edge" aria-label="Reading toolbar" aria-controls="reader-toolbar" aria-expanded="false">
+              <span class="reader-top-grip" aria-hidden="true"></span>
+              <span class="reader-top-label" aria-hidden="true">Toolbar</span>
+            </button>
             <header id="reader-toolbar" class="reader-toolbar" aria-label="Reader controls" inert>
-              <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
+              <div class="reader-file">
+                <button type="button" id="toggle-contents" class="icon-button" title="Contents" aria-label="Contents" aria-controls="reader-contents" aria-expanded="false"><i class="icon" data-lucide="list" aria-hidden="true"></i></button>
+                <h1 id="reader-title" dir="auto"></h1>
+              </div>
+              <div class="reader-position">
+                <output id="reader-location" class="reader-location" aria-hidden="true"></output>
+                <form id="pdf-page-jump" class="reader-page-jump" aria-label="PDF page navigation" hidden>
+                  <div class="reader-page-counter">
+                    <span class="reader-page-caption" aria-hidden="true">Page</span>
+                    <label class="visually-hidden" for="reader-page">Go to PDF page</label>
+                    <input id="reader-page" type="number" min="1" step="1" required inputmode="numeric" enterkeyhint="go" title="Enter a page number" />
+                    <span id="reader-page-total" aria-hidden="true"></span>
+                  </div>
+                  <input id="reader-progress" type="range" min="1" max="1" value="1" aria-label="Scrub PDF pages" />
+                </form>
+              </div>
               <div class="reader-controls">
-                <div class="control-group" role="group" aria-label="Document navigation">
-                  <button type="button" id="toggle-contents" class="icon-button" title="Contents" aria-label="Contents" aria-controls="reader-contents" aria-expanded="false"><i class="icon" data-lucide="list" aria-hidden="true"></i></button>
-                  <button type="button" id="toggle-find" class="icon-button" title="Find in document" aria-label="Find in document" aria-controls="reader-find" aria-expanded="false"><i class="icon" data-lucide="search" aria-hidden="true"></i></button>
-                </div>
+                <button type="button" id="toggle-find" class="icon-button" title="Find in document" aria-label="Find in document" aria-controls="reader-find" aria-expanded="false"><i class="icon" data-lucide="search" aria-hidden="true"></i></button>
                 <div class="control-group zoom-controls" role="group" aria-label="Reading size">
                   <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><i class="icon" data-lucide="minus" aria-hidden="true"></i></button>
                   <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
@@ -134,42 +165,31 @@
                 </div>
                 <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
               </div>
-              <div class="reader-position">
-                <output id="reader-location" class="reader-location" aria-hidden="true"></output>
-                <form id="pdf-page-jump" class="reader-page-jump" aria-label="PDF page navigation" hidden>
-                  <div class="reader-page-counter">
-                    <label class="visually-hidden" for="reader-page">Go to PDF page</label>
-                    <input id="reader-page" type="number" min="1" step="1" required inputmode="numeric" enterkeyhint="go" title="Enter a page number" />
-                    <span id="reader-page-total" aria-hidden="true"></span>
-                  </div>
-                  <input id="reader-progress" type="range" min="1" max="1" value="1" aria-label="Scrub PDF pages" />
-                </form>
-              </div>
             </header>
+            <p class="reader-entry-hint"><kbd>Esc</kbd> to take a break</p>
           </div>
 
           <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
           <p id="reader-location-status" class="visually-hidden" role="status"></p>
-          <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
-          <aside id="reader-contents" class="reader-panel reader-contents" aria-labelledby="contents-heading" hidden>
-            <div class="reader-panel-heading">
-              <h2 id="contents-heading">Contents</h2>
-              <button type="button" id="close-contents" class="icon-button" aria-label="Close contents"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
-            </div>
-            <p id="contents-status" role="status"></p>
-            <ol id="contents-list"></ol>
-          </aside>
-          <form id="reader-find" class="reader-panel reader-find" role="search" aria-label="Find in document" hidden>
-            <div class="reader-panel-heading">
-              <label for="find-query">Find in document</label>
-              <button type="button" id="close-find" class="icon-button" aria-label="Close search"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
-            </div>
-            <input type="search" id="find-query" required maxlength="500" autocomplete="off" />
-            <div class="find-actions">
-              <button type="submit" id="find-previous" class="quiet-button">Previous</button>
-              <button type="submit" id="find-next" class="button button-outline">Next</button>
-            </div>
-            <p id="search-result" role="status" hidden></p>
+          <div class="reader-body">
+            <aside id="reader-contents" class="reader-panel reader-contents" aria-labelledby="contents-heading" hidden>
+              <div class="reader-panel-heading">
+                <h2 id="contents-heading">Contents</h2>
+                <button type="button" id="pin-contents" class="quiet-button" aria-pressed="false">Pin</button>
+                <button type="button" id="close-contents" class="icon-button" aria-label="Close contents"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
+              </div>
+              <p id="contents-status" role="status"></p>
+              <ol id="contents-list"></ol>
+            </aside>
+            <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
+          </div>
+          <form id="reader-find" class="reader-find" role="search" aria-label="Find in document" hidden>
+            <label for="find-query" class="visually-hidden">Find in document</label>
+            <input type="search" id="find-query" placeholder="Find in document" required maxlength="500" autocomplete="off" />
+            <p id="search-result" role="status"></p>
+            <button type="submit" id="find-previous" class="icon-button" title="Previous match" aria-label="Previous match"><i class="icon" data-lucide="chevron-left" aria-hidden="true"></i></button>
+            <button type="submit" id="find-next" class="icon-button" title="Next match" aria-label="Next match"><i class="icon" data-lucide="chevron-right" aria-hidden="true"></i></button>
+            <button type="button" id="close-find" class="icon-button" title="Close search" aria-label="Close search"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
           </form>
 
           <div class="reader-bottom" role="group" aria-label="Reading navigation">
@@ -178,7 +198,10 @@
               <div id="reader-session-dock" class="reader-session-dock">
                 <div class="reader-session-trigger">
                   <span id="session-clock" class="session-clock" role="timer" aria-label="Session time remaining" hidden></span>
-                  <button type="button" id="reader-session-toggle" class="icon-button reader-edge-button" title="Session controls" aria-label="Session controls" aria-controls="reader-session-card" aria-expanded="false"><i class="icon" data-lucide="ellipsis" aria-hidden="true"></i></button>
+                  <button type="button" id="reader-session-toggle" class="icon-button reader-edge-button" aria-label="Session controls" aria-controls="reader-session-card" aria-expanded="false">
+                    <i class="icon" data-lucide="ellipsis" aria-hidden="true"></i>
+                    <span class="reader-session-label" aria-hidden="true">Session</span>
+                  </button>
                 </div>
                 <div id="reader-session-card" class="reader-session-card" role="group" aria-label="Session actions" inert>
                   <div class="session-card-inner">
@@ -322,7 +345,10 @@
     <dialog id="options-dialog" aria-labelledby="options-heading">
       <h2 id="options-heading">Reading options</h2>
       <div id="pdf-reading-options" class="pdf-reading-options">
-        <button type="button" id="fit-width" class="button button-outline">Fit to width</button>
+        <div class="fit-controls" role="group" aria-label="PDF page fit">
+          <button type="button" id="fit-page" class="button button-outline" aria-pressed="false">Fit page</button>
+          <button type="button" id="fit-width" class="button button-outline" aria-pressed="false">Fit width</button>
+        </div>
         <label class="inline-option"><input type="checkbox" id="reader-continuous-pdf" />Scroll through PDF pages</label>
       </div>
       <div id="epub-options" class="epub-options" hidden>

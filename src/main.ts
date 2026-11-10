@@ -6,7 +6,7 @@ import {
   readDocument, readOnlinePdf, setFullscreen, setWindowTheme, startDragging, toggleMaximizeWindow,
 } from './desktop';
 import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
-import { openReader, previewDocument, type DocumentKind, type Reader, type ReaderState, type ReadingPosition } from './readers';
+import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
 import { clockLabel, StudyTimer } from './timer';
 import { bindContextMenu, copyText, disclosure, drawIcons, type ContextCommand, type ContextTarget } from './window-ui';
@@ -32,6 +32,9 @@ const workspace = document.querySelector<HTMLElement>('.workspace-shell');
 const viewport = element('reader-viewport');
 const launcherError = element('launcher-error');
 const launcherLoading = element('launcher-loading');
+const launcherLoadingText = element('launcher-loading-text');
+const cancelOnline = button('cancel-online');
+const retryOnlineButton = button('retry-online');
 const readerError = element('reader-error');
 const breakError = element('break-error');
 const settingsError = element('settings-error');
@@ -49,8 +52,9 @@ const pdfPageJump = element<HTMLFormElement>('pdf-page-jump');
 const readerPage = element<HTMLInputElement>('reader-page');
 const readerProgress = element<HTMLInputElement>('reader-progress');
 const recentList = element('recent-list');
-const pickerButtons = ['choose-file', 'choose-file-inline', 'choose-another'].map(button);
-const linkButtons = ['open-link', 'open-link-inline'].map(button);
+const pickerButtons = ['choose-file', 'choose-file-inline'].map(button);
+const openSourceToggle = button('open-source');
+const openSourceMenu = disclosure(openSourceToggle, element('open-source-menu'));
 const continueButton = button('continue-reading');
 const reconnectButton = button('reconnect-document');
 const selectedDocument = element('selected-document');
@@ -62,6 +66,7 @@ const linkDialog = element<HTMLDialogElement>('link-dialog');
 const linkInput = element<HTMLInputElement>('pdf-link');
 const linkError = element('link-error');
 const contentsPanel = element('reader-contents');
+const pinContents = button('pin-contents');
 const findPanel = element('reader-find');
 const findInput = element<HTMLInputElement>('find-query');
 const searchResult = element('search-result');
@@ -91,18 +96,26 @@ let settings = loadSettings();
 let busy = false;
 let readerBusy = false;
 let queuedPdfPage: number | undefined;
+let queuedFind: { query: string; direction: FindDirection } | undefined;
 let saveDelay: ReturnType<typeof setTimeout> | undefined;
 let announced = false;
 let canSave = true;
 let lastDocument: SavedDocument | undefined;
 let missingDocument: SavedDocument | undefined;
 let replacementLink: SavedDocument | undefined;
+let onlineRequest: AbortController | undefined;
+let retryOnline: (() => void) | undefined;
 let batteryCheckPending = false;
 let batteryLevel = 0;
 let dismissedBatteryLevel = 0;
+let readerEntryHintShown = false;
+let readerEntryHintTimer: ReturnType<typeof setTimeout> | undefined;
+let contentsLinks: { entry: ReaderContentsEntry; button: HTMLButtonElement }[] = [];
+let contentsPinned = false;
+let reopenContents = false;
 
 function showError(node: HTMLElement, message = ''): void {
-  node.textContent = message;
+  if (node.textContent !== message) node.textContent = message;
   node.hidden = !message;
 }
 
@@ -111,6 +124,9 @@ function setScreen(next: Screen): void {
     queuedPdfPage = undefined;
     for (const error of [launcherError, readerError, breakError, settingsError]) showError(error);
     appMenu.close();
+    openSourceMenu.close();
+    clearTimeout(readerEntryHintTimer);
+    delete screens.reader.dataset.entryHint;
     readerToolbar.close();
     sessionMenu.close();
     closeReaderPanel(contentsPanel);
@@ -140,9 +156,10 @@ function activeSession(): boolean {
 
 function syncControls(): void {
   const canChoose = !busy && !activeSession();
-  for (const picker of [...pickerButtons, ...linkButtons]) picker.disabled = !canChoose;
+  for (const picker of [...pickerButtons, openSourceToggle, button('open-link')]) picker.disabled = !canChoose;
   continueButton.disabled = !canChoose;
   reconnectButton.disabled = !canChoose;
+  retryOnlineButton.disabled = !canChoose;
   for (const row of recentList.querySelectorAll<HTMLButtonElement>('button')) row.disabled = !canChoose;
   button('nav-library').disabled = busy;
   button('open-settings').disabled = busy;
@@ -174,10 +191,12 @@ function renderLibrary(): void {
 
   const recent = [...library].sort((a, b) => b.updatedAt - a.updatedAt);
   lastDocument = recent.find((entry) => entry.position);
-  continueButton.hidden = !lastDocument;
+  element('continue-document').hidden = !lastDocument || !selectedDocument.hidden;
   if (lastDocument) {
     element('continue-title').textContent = lastDocument.title;
+    element('continue-kind').textContent = kindLabel(lastDocument.kind);
     element('continue-location').textContent = lastDocument.label ?? kindLabel(lastDocument.kind);
+    button('continue-review-notes').hidden = lastDocument.notes.length === 0;
   }
 
   for (const entry of recent.slice(0, 5)) {
@@ -195,10 +214,7 @@ function renderLibrary(): void {
     detail.className = 'recent-meta';
     detail.textContent = entry.label ?? kindLabel(entry.kind);
     row.append(title, detail);
-    row.addEventListener('click', () => void selectDocument(
-      async () => ({ ...entry, bytes: await readSavedDocument(entry) }),
-      (error) => showReopenError(entry, error),
-    ));
+    row.addEventListener('click', () => void openRecent(entry));
     item.append(row);
     recentList.append(item);
   }
@@ -232,8 +248,33 @@ function showSelection(entry: SavedDocument, bytes?: ArrayBuffer, cover?: Awaite
   button('launcher-review-notes').hidden = entry.notes.length === 0;
 }
 
-function readSavedDocument(entry: SavedDocument): Promise<ArrayBuffer> {
-  return entry.online ? readOnlinePdf(entry.path) : readDocument(entry.path);
+function openRecent(entry: SavedDocument): Promise<boolean> {
+  return selectDocument(async (signal) => ({
+    ...entry, bytes: await readSavedDocument(entry, signal),
+  }), (error) => showReopenError(entry, error, () => void openRecent(entry)), undefined, entry.online ? entry.path : undefined);
+}
+
+function beginOnlineRequest(url: string, status: HTMLElement): AbortController {
+  const host = new URL(url).host;
+  const request = new AbortController();
+  onlineRequest = request;
+  showError(status, `Opening PDF from ${host}…`);
+  if (status === launcherLoadingText) {
+    launcherLoading.hidden = false;
+    cancelOnline.hidden = false;
+    cancelOnline.focus();
+  }
+  return request;
+}
+
+function finishOnlineRequest(request: AbortController | undefined): void {
+  if (!request || onlineRequest !== request) return;
+  onlineRequest = undefined;
+  cancelOnline.hidden = true;
+}
+
+function readSavedDocument(entry: SavedDocument, signal?: AbortSignal): Promise<ArrayBuffer> {
+  return entry.online ? readOnlinePdf(entry.path, signal) : readDocument(entry.path);
 }
 
 function documentError(error: unknown, fallback: string): string {
@@ -243,8 +284,10 @@ function documentError(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function showReopenError(entry: SavedDocument, error: unknown): void {
+function showReopenError(entry: SavedDocument, error: unknown, retry?: () => void): void {
   missingDocument = entry;
+  retryOnline = entry.online ? retry : undefined;
+  retryOnlineButton.hidden = !retryOnline;
   reconnectButton.textContent = entry.online ? 'Update PDF link' : 'Locate file';
   reconnectButton.hidden = false;
   showError(launcherError, documentError(error, entry.online
@@ -255,31 +298,44 @@ function showReopenError(entry: SavedDocument, error: unknown): void {
 type ChosenDocument = NonNullable<Awaited<ReturnType<typeof pickDocument>>> & { online?: true };
 
 async function selectDocument(
-  pick: () => Promise<ChosenDocument | null>,
+  pick: (signal?: AbortSignal) => Promise<ChosenDocument | null>,
   onError: (error: unknown) => void,
   replacement?: SavedDocument,
+  onlineUrl?: string,
 ): Promise<boolean> {
   if (busy || activeSession()) return false;
   if (screen === 'settings') setScreen('launcher');
+  const initiator = document.activeElement;
   setBusy(true);
   if (!replacement) {
     missingDocument = undefined;
     reconnectButton.hidden = true;
+    retryOnlineButton.hidden = true;
     showError(launcherError);
   }
   let opened = false;
   let kind: DocumentKind | undefined;
+  let request: AbortController | undefined;
   try {
-    const file = await pick();
+    if (onlineUrl) request = beginOnlineRequest(onlineUrl, linkDialog.open ? element('link-status') : launcherLoadingText);
+    const file = await pick(request?.signal);
+    request?.signal.throwIfAborted();
     if (!file) return false;
-    launcherLoading.hidden = false;
+    if (!request) {
+      launcherLoadingText.textContent = 'Opening document…';
+      launcherLoading.hidden = false;
+    }
     const extension = file.name.split('.').pop()?.toLowerCase();
     kind = file.online ? 'pdf' : extension === 'md' || extension === 'markdown' ? 'markdown'
       : extension === 'pdf' || extension === 'epub' ? extension : undefined;
     if (!kind) throw new Error('Choose a PDF, EPUB, or Markdown file.');
     const source = { path: file.path, name: file.name, kind, online: file.online };
     const repaired = replacement ? reconnectDocument(library, replacement, source) : undefined;
-    const cover = await previewDocument(kind, file.bytes);
+    const cover = await previewDocument(kind, file.bytes, request?.signal);
+    if (request?.signal.aborted) {
+      if (cover.image) URL.revokeObjectURL(cover.image);
+      return false;
+    }
     const existing = library.find((entry) => entry.path === file.path);
     const saved = repaired?.document ?? existing ?? {
       ...source,
@@ -298,20 +354,29 @@ async function selectDocument(
     }
     missingDocument = undefined;
     reconnectButton.hidden = true;
+    retryOnlineButton.hidden = true;
     showError(launcherError);
     showSelection(saved, file.bytes, cover);
     renderLibrary();
     opened = true;
     return true;
   } catch (error) {
+    if (request?.signal.aborted) return false;
     if (!replacement && kind === 'markdown' && error instanceof Error) showError(launcherError, error.message);
     else onError(error);
     return false;
   } finally {
+    finishOnlineRequest(request);
     launcherLoading.hidden = true;
     setBusy(false);
     if (opened && !linkDialog.open) button('start-session').focus();
+    else if (!linkDialog.open && !retryOnlineButton.hidden) retryOnlineButton.focus();
     else if (!launcherError.hidden && !reconnectButton.hidden && !linkDialog.open) reconnectButton.focus();
+    else if (!linkDialog.open) {
+      const restore = initiator instanceof HTMLButtonElement && !initiator.closest('[inert], [hidden]')
+        ? initiator : openSourceToggle;
+      restore.focus();
+    }
   }
 }
 
@@ -335,8 +400,14 @@ function persist(): boolean {
   }
 }
 
+function pdfFitMode(fit?: PdfFit): PdfFit | undefined {
+  if (fit !== 'auto') return fit;
+  return readerContinuousPdf.checked ? 'width' : 'page';
+}
+
 function updateReading(state: ReaderState): void {
   reading = state;
+  updateActiveContents(state);
   const location = element('reader-location');
   const pdf = state.position.kind === 'pdf' && !!state.pageCount;
   location.textContent = state.label;
@@ -360,12 +431,14 @@ function updateReading(state: ReaderState): void {
   element('break-location').textContent = state.label;
   button('previous-page').disabled = !state.canPrevious;
   button('next-page').disabled = !state.canNext;
-  element('zoom-level').textContent = state.position.kind === 'epub'
-    ? `${state.position.fontSize}px`
-    : `${Math.round(state.position.zoom * 100)}%`;
+  const size = element('zoom-level');
   if (state.position.kind === 'epub') {
+    size.textContent = `${state.position.fontSize}px`;
     element<HTMLSelectElement>('line-height').value = String(state.position.lineHeight);
     element<HTMLSelectElement>('reading-width').value = String(state.position.width);
+  } else {
+    const fit = state.position.kind === 'pdf' ? pdfFitMode(state.position.fit) : undefined;
+    size.textContent = fit === 'page' || fit === 'width' ? `Fit ${fit}` : `${Math.round(state.position.zoom * 100)}%`;
   }
   clearTimeout(saveDelay);
   if (reader) saveDelay = setTimeout(persist, 250);
@@ -415,18 +488,42 @@ async function checkBattery(): Promise<void> {
   }
 }
 
+function showReaderEntryHint(): void {
+  if (readerEntryHintShown) return;
+  readerEntryHintShown = true;
+  const key = 'openstudy.reader-entry-hint.v1';
+  try {
+    if (localStorage.getItem(key)) return;
+    localStorage.setItem(key, '1');
+  } catch {
+    // The in-memory flag is enough for this launch when storage is unavailable.
+  }
+  screens.reader.dataset.entryHint = '';
+  readerToolbar.preview(true);
+  readerEntryHintTimer = setTimeout(() => {
+    delete screens.reader.dataset.entryHint;
+    readerToolbar.preview(false);
+  }, 5500);
+}
+
 async function startSession(entry = selection?.document, position = entry?.position, minutes = Number(timerSelect.value)): Promise<void> {
   if (screen !== 'launcher' || busy || !entry) return;
   setBusy(true);
   showError(readerError);
   let openingDocument = false;
+  let request: AbortController | undefined;
+  const retry = () => void startSession(entry, position, minutes);
   try {
     let bytes = selection?.document === entry ? selection.bytes : undefined;
-    if (!bytes && entry.online && os !== 'browser') {
+    if (!bytes && entry.online) {
       showError(launcherError);
-      launcherLoading.hidden = false;
+      retryOnlineButton.hidden = reconnectButton.hidden = true;
+      request = beginOnlineRequest(entry.path, launcherLoadingText);
       openingDocument = true;
-      bytes = await readSavedDocument(entry);
+      bytes = await readSavedDocument(entry, request.signal);
+      request.signal.throwIfAborted();
+      finishOnlineRequest(request);
+      launcherLoading.hidden = true;
       openingDocument = false;
     }
     element('reader-title').textContent = entry.title;
@@ -448,9 +545,13 @@ async function startSession(entry = selection?.document, position = entry?.posit
     findInput.value = '';
     showError(searchResult);
     element('contents-list').replaceChildren();
+    contentsLinks = [];
+    setContentsPinned(false);
+    reopenContents = false;
+    screens.reader.dataset.kind = entry.kind;
     reading = undefined;
     missingDocument = undefined;
-    reconnectButton.hidden = true;
+    retryOnlineButton.hidden = reconnectButton.hidden = true;
     batteryLevel = dismissedBatteryLevel = 0;
     setScreen('reader');
     await setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
@@ -466,18 +567,25 @@ async function startSession(entry = selection?.document, position = entry?.posit
     persist();
     void checkBattery();
     viewport.focus();
+    showReaderEntryHint();
   } catch (error) {
     reader?.destroy();
     reader = undefined;
     viewport.replaceChildren();
     await setFullscreen(false).catch(console.error);
     setScreen('launcher');
-    if (openingDocument && library.includes(entry)) showReopenError(entry, error);
+    if (request?.signal.aborted) return;
+    if (openingDocument && library.includes(entry)) showReopenError(entry, error, retry);
     else showError(launcherError, documentError(error, 'The reader could not start. Try opening the document again.'));
   } finally {
+    finishOnlineRequest(request);
     launcherLoading.hidden = true;
     setBusy(false);
-    if (screen === 'launcher' && missingDocument) reconnectButton.focus();
+    if (screen === 'launcher') {
+      if (!retryOnlineButton.hidden) retryOnlineButton.focus();
+      else if (missingDocument && !reconnectButton.hidden) reconnectButton.focus();
+      else if (request?.signal.aborted) (selectedDocument.hidden ? continueButton : button('start-session')).focus();
+    }
   }
 }
 
@@ -489,6 +597,7 @@ async function takeBreak(): Promise<void> {
   const saved = persist();
   try {
     await setFullscreen(false);
+    reopenContents = contentsPinned && !contentsPanel.hidden;
     setScreen('break');
     if (!saved) showError(breakError, 'OpenStudy could not save your reading progress.');
     updateClock();
@@ -524,6 +633,10 @@ async function resumeSession(): Promise<boolean> {
     return false;
   } finally {
     setBusy(false);
+    if (!screens.reader.hidden && reopenContents) {
+      reopenContents = false;
+      void openContents(false);
+    }
   }
 }
 
@@ -538,10 +651,9 @@ async function endSession(): Promise<void> {
     reading = undefined;
     timer = undefined;
     viewport.replaceChildren();
-    if (selection) {
-      element('selected-meta').textContent = selection.document.label ?? kindLabel(selection.document.kind);
-      button('launcher-review-notes').hidden = selection.document.notes.length === 0;
-    }
+    selectedDocument.hidden = true;
+    selection = undefined;
+    clearPreview();
     timerSelect.value = String(settings.defaultMinutes);
     renderLibrary();
     setScreen('launcher');
@@ -552,7 +664,7 @@ async function endSession(): Promise<void> {
     showError(screen === 'break' ? breakError : readerError, 'Could not end this session. You can still close OpenStudy.');
   } finally {
     setBusy(false);
-    if (!screens.launcher.hidden) button('choose-file').focus();
+    if (!screens.launcher.hidden) (element('continue-document').hidden ? openSourceToggle : continueButton).focus();
   }
 }
 
@@ -574,13 +686,18 @@ async function readerAction(action: (active: Reader) => Promise<unknown>): Promi
       queuedPdfPage = undefined;
       void jumpToPdfPage(page);
     }
+    if (queuedFind) {
+      const { query, direction } = queuedFind;
+      queuedFind = undefined;
+      findDocument(query, direction);
+    }
   }
 }
 
-function showNotes(): void {
-  if (!selection || busy || readerBusy) return;
+function showNotes(entry = selection?.document): void {
+  if (!entry || busy || readerBusy) return;
   const list = element('notes-list');
-  const notes = selection.document.notes;
+  const notes = entry.notes;
   list.replaceChildren();
   element('notes-empty').hidden = notes.length > 0;
   for (const note of notes) {
@@ -594,7 +711,10 @@ function showNotes(): void {
     jump.addEventListener('click', async () => {
       notesDialog.close();
       if (screen === 'launcher') {
-        await startSession(selection?.document, note.position);
+        const position = note.position.kind === 'pdf' && entry.position?.kind === 'pdf'
+          ? { ...note.position, fit: entry.position.fit, zoom: entry.position.zoom }
+          : note.position;
+        await startSession(entry, position, selectedDocument.hidden ? settings.defaultMinutes : Number(timerSelect.value));
         return;
       }
       if (screen === 'break' && !await resumeSession()) return;
@@ -697,33 +817,44 @@ function returnFromSettings(): void {
 }
 
 for (const picker of pickerButtons) {
-  picker.addEventListener('click', () => void selectDocument(
-    pickDocument,
-    (error) => showError(launcherError, documentError(error, 'Choose a readable PDF, EPUB, or Markdown file.')),
-  ));
+  picker.addEventListener('click', () => {
+    openSourceMenu.close();
+    void selectDocument(pickDocument, (error) => showError(launcherError,
+      documentError(error, 'Choose a readable PDF, EPUB, or Markdown file.')));
+  });
 }
 
 function showLinkDialog(replacement?: SavedDocument): void {
   if (busy || activeSession()) return;
   if (screen === 'settings') setScreen('launcher');
+  openSourceMenu.close();
   replacementLink = replacement;
   element('link-heading').textContent = replacement ? 'Update PDF link' : 'Open PDF link';
   linkInput.value = replacement?.path ?? '';
   showError(linkError);
+  button('submit-link').textContent = 'Open PDF';
   linkDialog.showModal();
   linkInput.select();
 }
 
-for (const trigger of linkButtons) trigger.addEventListener('click', () => showLinkDialog());
+button('open-link').addEventListener('click', () => showLinkDialog());
+cancelOnline.addEventListener('click', () => onlineRequest?.abort());
+retryOnlineButton.addEventListener('click', () => retryOnline?.());
 reconnectButton.addEventListener('click', () => {
   if (!missingDocument) return;
   if (missingDocument.online) showLinkDialog(missingDocument);
   else void selectDocument(pickDocument, (error) => showError(launcherError, documentError(error,
     error instanceof Error && !/password/i.test(error.name) ? error.message : 'Choose the original file.')), missingDocument);
 });
-button('cancel-link').addEventListener('click', () => linkDialog.close());
-linkDialog.addEventListener('cancel', (event) => {
-  if (busy) event.preventDefault();
+button('cancel-link').addEventListener('click', () => {
+  onlineRequest?.abort();
+  linkDialog.close();
+  if (!busy) (replacementLink ? reconnectButton : openSourceToggle).focus();
+});
+linkDialog.addEventListener('cancel', () => onlineRequest?.abort());
+linkInput.addEventListener('input', () => {
+  showError(linkError);
+  button('submit-link').textContent = 'Open PDF';
 });
 element('link-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -741,19 +872,22 @@ element('link-form').addEventListener('submit', async (event) => {
   let name = segment;
   try { name = decodeURIComponent(segment); } catch { /* Keep a malformed escape readable. */ }
   showError(linkError);
-  const cancel = button('cancel-link');
   const submit = button('submit-link');
-  linkInput.readOnly = cancel.disabled = submit.disabled = true;
-  showError(element('link-status'), 'Opening PDF…');
-  const opened = await selectDocument(async () => ({
-    path: url.href, name, online: true, bytes: await readOnlinePdf(url.href),
-  }), (error) => showError(linkError, documentError(error, 'Could not open this PDF link. Check that it opens a PDF directly.')), replacementLink);
-  linkInput.readOnly = cancel.disabled = submit.disabled = false;
+  linkInput.readOnly = submit.disabled = true;
+  button('cancel-link').focus();
+  const opened = await selectDocument(async (signal) => ({
+    path: url.href, name, online: true, bytes: await readOnlinePdf(url.href, signal),
+  }), (error) => {
+    showError(linkError, documentError(error, 'Could not open this PDF link. Check that it opens a PDF directly.'));
+    submit.textContent = 'Retry';
+  }, replacementLink, url.href);
+  linkInput.readOnly = submit.disabled = false;
   showError(element('link-status'));
   if (opened) {
     linkDialog.close();
     button('start-session').focus();
-  } else linkInput.focus();
+  } else if (linkDialog.open) submit.focus();
+  else openSourceToggle.focus();
 });
 continueButton.addEventListener('click', () => {
   if (lastDocument) void startSession(lastDocument, lastDocument.position, settings.defaultMinutes);
@@ -796,12 +930,23 @@ readerProgress.addEventListener('input', () => {
 readerProgress.addEventListener('change', () => void jumpToPdfPage(readerProgress.valueAsNumber));
 button('zoom-in').addEventListener('click', () => void readerAction((active) => active.zoom(1)));
 button('zoom-out').addEventListener('click', () => void readerAction((active) => active.zoom(-1)));
-button('fit-width').addEventListener('click', () => {
-  optionsDialog.close();
-  void readerAction((active) => active.fit());
-});
+for (const fit of ['page', 'width'] as const) {
+  button(`fit-${fit}`).addEventListener('click', () => {
+    void readerAction(async (active) => {
+      await active.setPdfFit?.(fit);
+      optionsDialog.close();
+      viewport.focus();
+    });
+  });
+}
 button('reader-options').addEventListener('click', () => {
-  if (reader && !busy && !readerBusy) optionsDialog.showModal();
+  if (!reader || busy || readerBusy) return;
+  if (reading?.position.kind === 'pdf') {
+    const current = pdfFitMode(reading.position.fit);
+    button('fit-page').setAttribute('aria-pressed', String(current === 'page'));
+    button('fit-width').setAttribute('aria-pressed', String(current === 'width'));
+  }
+  optionsDialog.showModal();
 });
 button('close-options').addEventListener('click', () => optionsDialog.close());
 readerContinuousPdf.addEventListener('change', async () => {
@@ -812,6 +957,7 @@ readerContinuousPdf.addEventListener('change', async () => {
     await readerAction(async (active) => {
       await active.setPdfContinuous?.(enabled);
       if (!changeSettings({ ...settings, pdfContinuous: enabled }, readerError)) {
+        readerContinuousPdf.checked = previous;
         await active.setPdfContinuous?.(previous);
       }
     });
@@ -829,20 +975,55 @@ element<HTMLSelectElement>('reading-width').addEventListener('change', (event) =
   void readerAction((active) => active.setEpubLayout({ width }));
 });
 function closeReaderPanel(panel: HTMLElement, focus = false): void {
-  if (!panel.hidden && panel === findPanel) reader?.clearFind?.();
+  if (!panel.hidden && panel === findPanel) {
+    queuedFind = undefined;
+    reader?.clearFind?.();
+  }
   panel.hidden = true;
   const toggle = button(panel === contentsPanel ? 'toggle-contents' : 'toggle-find');
   toggle.setAttribute('aria-expanded', 'false');
   if (focus) (toggle.closest('[inert]') ? viewport : toggle).focus();
 }
 
-async function openContents(): Promise<void> {
+function setContentsPinned(pinned: boolean): void {
+  contentsPinned = pinned;
+  contentsPanel.toggleAttribute('data-pinned', pinned);
+  pinContents.setAttribute('aria-pressed', String(pinned));
+  pinContents.textContent = pinned ? 'Unpin' : 'Pin';
+}
+
+function updateActiveContents(state: ReaderState): void {
+  if (contentsPanel.hidden) return;
+  let current: HTMLButtonElement | undefined;
+  let currentPage = 0;
+  for (const link of contentsLinks) {
+    const { entry } = link;
+    if (state.position.kind === 'pdf' && entry.page !== undefined) {
+      if (entry.page >= currentPage && entry.page <= state.position.page) {
+        currentPage = entry.page;
+        current = link.button;
+      }
+    } else if (entry.current ? entry.current(state.position) : entry.label === state.label) {
+      current = link.button;
+    }
+  }
+  for (const link of contentsLinks) {
+    if (link.button === current) link.button.setAttribute('aria-current', 'location');
+    else link.button.removeAttribute('aria-current');
+  }
+}
+
+async function openContents(focus = true): Promise<void> {
   if (!reader || busy) return;
   const active = reader;
-  closeReaderPanel(findPanel);
+  if (!contentsPinned) closeReaderPanel(findPanel);
   contentsPanel.hidden = false;
   button('toggle-contents').setAttribute('aria-expanded', 'true');
-  button('close-contents').focus();
+  if (focus) button('close-contents').focus();
+  if (contentsLinks.length) {
+    if (reading) updateActiveContents(reading);
+    return;
+  }
   const list = element('contents-list');
   const status = element('contents-status');
   list.replaceChildren();
@@ -851,7 +1032,8 @@ async function openContents(): Promise<void> {
     const entries = await active.contents?.() ?? [];
     if (reader !== active || contentsPanel.hidden) return;
     showError(status, entries.length ? '' : 'No table of contents.');
-    list.replaceChildren(...entries.map((entry) => {
+    const items = document.createDocumentFragment();
+    contentsLinks = entries.map((entry) => {
       const item = document.createElement('li');
       const jump = document.createElement('button');
       jump.type = 'button';
@@ -861,12 +1043,17 @@ async function openContents(): Promise<void> {
       item.style.setProperty('--contents-depth', String(Math.min(6, Math.max(0, entry.depth))));
       jump.addEventListener('click', () => void readerAction(async () => {
         await entry.goTo();
-        closeReaderPanel(contentsPanel);
-        viewport.focus();
+        if (!contentsPinned) {
+          closeReaderPanel(contentsPanel);
+          viewport.focus();
+        }
       }));
       item.append(jump);
-      return item;
-    }));
+      items.append(item);
+      return { entry, button: jump };
+    });
+    list.replaceChildren(items);
+    if (reading) updateActiveContents(reading);
   } catch {
     if (reader === active) showError(status, 'Could not load contents.');
   }
@@ -874,7 +1061,7 @@ async function openContents(): Promise<void> {
 
 function openFind(): void {
   if (!reader || busy || !reader.find) return;
-  closeReaderPanel(contentsPanel);
+  if (!contentsPinned) closeReaderPanel(contentsPanel);
   findPanel.hidden = false;
   button('toggle-find').setAttribute('aria-expanded', 'true');
   findInput.focus();
@@ -885,13 +1072,21 @@ button('toggle-contents').addEventListener('click', () => {
   if (contentsPanel.hidden) void openContents();
   else closeReaderPanel(contentsPanel, true);
 });
+pinContents.addEventListener('click', () => {
+  setContentsPinned(!contentsPinned);
+  if (!contentsPinned) closeReaderPanel(findPanel);
+});
 button('toggle-find').addEventListener('click', () => {
   if (findPanel.hidden) openFind();
   else closeReaderPanel(findPanel, true);
 });
 button('close-contents').addEventListener('click', () => closeReaderPanel(contentsPanel, true));
 button('close-find').addEventListener('click', () => closeReaderPanel(findPanel, true));
-findInput.addEventListener('input', () => showError(searchResult));
+findInput.addEventListener('input', () => {
+  queuedFind = undefined;
+  reader?.clearFind?.();
+  showError(searchResult);
+});
 findInput.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' || event.isComposing) return;
   event.preventDefault();
@@ -899,22 +1094,34 @@ findInput.addEventListener('keydown', (event) => {
 });
 findPanel.addEventListener('submit', (event) => {
   event.preventDefault();
-  const query = findInput.value.trim();
-  if (!query) return;
   const direction = (event as SubmitEvent).submitter === button('find-previous') ? 'previous' : 'next';
+  findDocument(findInput.value.trim(), direction);
+});
+
+function findDocument(query: string, direction: FindDirection): void {
+  if (!query || findPanel.hidden || findInput.value.trim() !== query) return;
+  if (readerBusy) {
+    queuedFind = { query, direction };
+    return;
+  }
   void readerAction(async (active) => {
     showError(searchResult, 'Searching…');
     try {
-      const found = await active.find?.(query, direction);
-      if (findInput.value.trim() !== query) return;
-      showError(searchResult, found
-        ? reading?.position.kind === 'pdf' ? reading.label : 'Match found.'
-        : 'No matching text found.');
+      const report = (result: FindResult) => {
+        if (findPanel.hidden || findInput.value.trim() !== query) return;
+        if (!result.found && result.complete) showError(searchResult, 'No matches');
+        else if (result.complete) showError(searchResult, result.index === undefined
+          ? `${result.count} matches` : `${result.index} of ${result.count}`);
+        else if (result.counting) showError(searchResult, `${result.count} found. Counting…`);
+        else showError(searchResult, `${result.count} found in readable text`);
+      };
+      const result = await active.find?.(query, direction, report);
+      if (result) report(result);
     } catch {
-      showError(searchResult, 'Could not search this document.');
+      if (!findPanel.hidden && findInput.value.trim() === query) showError(searchResult, 'Search failed');
     }
   });
-});
+}
 
 const noteText = element<HTMLTextAreaElement>('note-text');
 button('add-note').addEventListener('click', () => {
@@ -939,9 +1146,10 @@ element('note-form').addEventListener('submit', (event) => {
   noteDialog.close();
 });
 button('cancel-note').addEventListener('click', () => noteDialog.close());
-button('review-notes').addEventListener('click', showNotes);
-button('launcher-review-notes').addEventListener('click', showNotes);
-document.getElementById('break-review-notes')?.addEventListener('click', showNotes);
+button('review-notes').addEventListener('click', () => showNotes());
+button('launcher-review-notes').addEventListener('click', () => showNotes());
+button('break-review-notes').addEventListener('click', () => showNotes());
+button('continue-review-notes').addEventListener('click', () => showNotes(lastDocument));
 button('close-notes').addEventListener('click', () => notesDialog.close());
 
 const notificationsDescription = element('notifications-description');
@@ -1118,7 +1326,12 @@ document.addEventListener('keydown', (event) => {
       closeReaderPanel(panel, true);
       return;
     }
-    for (const [menu, toggle] of [[appMenu, windowMenuToggle], [sessionMenu, sessionToggle], [readerToolbar, toolbarToggle]] as const) {
+    if (onlineRequest) {
+      event.preventDefault();
+      onlineRequest.abort();
+      return;
+    }
+    for (const [menu, toggle] of [[appMenu, windowMenuToggle], [openSourceMenu, openSourceToggle], [sessionMenu, sessionToggle], [readerToolbar, toolbarToggle]] as const) {
       if (!menu.isPinned()) continue;
       event.preventDefault();
       menu.close();

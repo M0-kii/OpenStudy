@@ -1,10 +1,13 @@
 export type DocumentKind = 'pdf' | 'epub' | 'markdown';
 
+export type PdfFit = 'auto' | 'page' | 'width' | 'custom';
+
 export interface PdfPosition {
   kind: 'pdf';
   page: number;
   scroll: number;
   zoom: number;
+  fit?: PdfFit;
 }
 
 export interface EpubLayout {
@@ -36,9 +39,19 @@ export interface ReaderState {
 
 export type FindDirection = 'next' | 'previous';
 
+export interface FindResult {
+  found: boolean;
+  index?: number;
+  count: number;
+  complete: boolean;
+  counting: boolean;
+}
+
 export interface ReaderContentsEntry {
   label: string;
   depth: number;
+  page?: number;
+  current?(position: ReadingPosition): boolean;
   goTo(): Promise<void>;
 }
 
@@ -50,8 +63,9 @@ export interface Reader {
   fit(): Promise<void>;
   setEpubLayout(layout: Partial<EpubLayout>): Promise<void>;
   setPdfContinuous?(enabled: boolean): Promise<void>;
+  setPdfFit?(fit: 'page' | 'width'): Promise<void>;
   contents?(): Promise<readonly ReaderContentsEntry[]>;
-  find?(query: string, direction?: FindDirection): Promise<boolean>;
+  find?(query: string, direction?: FindDirection, onProgress?: (result: FindResult) => void): Promise<FindResult>;
   clearFind?(): void;
   destroy(): void;
 }

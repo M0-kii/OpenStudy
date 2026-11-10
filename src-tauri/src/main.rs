@@ -206,7 +206,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             pick_document,
             read_document,
+            online_pdf::prepare_online_pdf,
             online_pdf::read_online_pdf,
+            online_pdf::cancel_online_pdf,
             open_notification_settings,
             battery::get_battery_status,
             set_study_fullscreen

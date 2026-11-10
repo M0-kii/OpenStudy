@@ -3,7 +3,8 @@
 OpenStudy is a desktop reading space for PDFs, EPUBs, and Markdown files. Open a file or paste a direct PDF link, then start a fullscreen session.
 
 - **Continue reading** returns to your last page, passage, or scroll position in one click. **Recent files** keeps a separate history for each document. Use **Locate file** if a document has moved.
-- Move the pointer to the top edge to reveal the reading toolbar. Open **Contents** to jump between sections, or use **Ctrl+F** (**⌘F** on Mac) to find text. You can also jump straight to a page in a PDF.
+- Move the pointer to the top edge to reveal the reading toolbar. Pin **Contents** beside the document or use **Ctrl+F** (**⌘F** on Mac) to find text and move between matches.
+- PDFs start at **Fit page** in paged mode and **Fit width** in continuous mode. Open **Reading options** to change the fit, or use **+** and **−** to set your own zoom. Each PDF remembers its layout.
 - Open **Session controls** at the bottom right to take a break or end the session. **Esc** leaves reading mode and pauses the optional timer when menus are closed.
 - **Look up later** saves a note with a link to the current reading position.
 - Progress, notes, and PDF links stay on your device. PDFs opened from links need a connection when reopened.

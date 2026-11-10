@@ -15,6 +15,7 @@ export function drawIcons(): void {
 export function disclosure(button: HTMLButtonElement, panel: HTMLElement, hoverRegion?: HTMLElement) {
   let pinned = false;
   let hovered = false;
+  let previewing = false;
 
   function open(value: boolean): void {
     if (panel.inert === !value) return;
@@ -26,7 +27,13 @@ export function disclosure(button: HTMLButtonElement, panel: HTMLElement, hoverR
   function close(): void {
     pinned = false;
     hovered = false;
+    previewing = false;
     open(false);
+  }
+
+  function preview(value: boolean): void {
+    previewing = value;
+    open(value || pinned || hovered || panel.contains(document.activeElement));
   }
 
   button.addEventListener('click', () => {
@@ -44,11 +51,11 @@ export function disclosure(button: HTMLButtonElement, panel: HTMLElement, hoverR
   });
   hoverRegion?.addEventListener('pointerleave', () => {
     hovered = false;
-    if (!pinned && !panel.contains(document.activeElement)) open(false);
+    if (!pinned && !previewing && !panel.contains(document.activeElement)) open(false);
   });
   panel.addEventListener('focusout', (event) => {
     if (event.relatedTarget instanceof Node && panel.contains(event.relatedTarget)) return;
-    if (!pinned && !hovered) open(false);
+    if (!pinned && !hovered && !previewing) open(false);
   });
   document.addEventListener('pointerdown', (event) => {
     if (!(event.target instanceof Node) || button.contains(event.target) || panel.contains(event.target)) return;
@@ -56,7 +63,7 @@ export function disclosure(button: HTMLButtonElement, panel: HTMLElement, hoverR
   });
   window.addEventListener('blur', close);
 
-  return { close, isPinned: () => pinned };
+  return { close, preview, isPinned: () => pinned };
 }
 
 export interface ContextTarget {

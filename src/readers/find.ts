@@ -1,4 +1,4 @@
-import type { FindDirection } from './index';
+import type { FindDirection, FindResult } from './index';
 
 export interface TextMatch {
   index: number;
@@ -16,18 +16,72 @@ export function findPattern(query: string): RegExp | undefined {
   return new RegExp(words.join('\\s+'), 'giu');
 }
 
-export function findText(text: string, pattern: RegExp, direction: FindDirection, from?: number): TextMatch | undefined {
-  pattern.lastIndex = direction === 'next' ? from ?? 0 : 0;
-  if (direction === 'next') {
-    const match = pattern.exec(text);
-    return match ? { index: match.index, length: match[0].length } : undefined;
+export const emptyFindResult: FindResult = { found: false, count: 0, complete: true, counting: false };
+
+export function textMatches(text: string, pattern: RegExp): TextMatch[] {
+  return Array.from(text.matchAll(pattern), (match) => ({ index: match.index, length: match[0].length }));
+}
+
+export function selectMatch(matches: readonly TextMatch[], direction: FindDirection, from?: number): TextMatch | undefined {
+  return direction === 'next'
+    ? matches.find((match) => from === undefined || match.index >= from)
+    : matches.findLast((match) => from === undefined || match.index < from);
+}
+
+export function groupedMatches(pattern: RegExp, size: number, readText: (group: number) => Promise<string>) {
+  const groups = new Map<number, readonly TextMatch[] | null>();
+  const pending = new Map<number, Promise<readonly TextMatch[]>>();
+  // prefix[n] holds the number of matches before group n, when all earlier groups were readable.
+  const prefix = [0];
+  let count = 0;
+  let incomplete = false;
+
+  async function read(group: number): Promise<readonly TextMatch[]> {
+    if (groups.has(group)) return groups.get(group) ?? [];
+    const existing = pending.get(group);
+    if (existing) return existing;
+    const loading = readText(group).then((text) => textMatches(text, pattern)).then((matches) => {
+      groups.set(group, matches);
+      count += matches.length;
+      for (let adjacent = groups.get(prefix.length - 1); adjacent; adjacent = groups.get(prefix.length - 1)) {
+        prefix.push(prefix.at(-1)! + adjacent.length);
+      }
+      return matches;
+    }).catch(() => {
+      incomplete = true;
+      groups.set(group, null);
+      return [];
+    }).finally(() => pending.delete(group));
+    pending.set(group, loading);
+    return loading;
   }
 
-  let previous: TextMatch | undefined;
-  for (let match = pattern.exec(text); match && (from === undefined || match.index < from); match = pattern.exec(text)) {
-    previous = { index: match.index, length: match[0].length };
+  function result(match?: GroupMatch): FindResult {
+    const before = match && prefix[match.group];
+    const matches = match && groups.get(match.group);
+    const rank = match && matches?.findIndex(({ index }) => index === match.index);
+    const index = before !== undefined && rank !== undefined && rank >= 0 ? before + rank + 1 : undefined;
+    const counting = groups.size < size;
+    return { found: !!match, index, count, complete: !counting && !incomplete, counting };
   }
-  return previous;
+
+  async function countRest(active: () => boolean, update: () => void): Promise<void> {
+    let nextUpdate = Date.now() + 200;
+    for (let group = 0; group < size && active(); group++) {
+      if (groups.has(group)) continue;
+      // Yield between groups so input and rendering can proceed during a long count.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (!active()) return;
+      await read(group);
+      if (active() && groups.size < size && Date.now() >= nextUpdate) {
+        update();
+        nextUpdate = Date.now() + 200;
+      }
+    }
+    if (active()) update();
+  }
+
+  return { query: pattern.source, read, result, countRest };
 }
 
 export function* findGroups(count: number, start: number, direction: FindDirection, previous?: GroupMatch) {

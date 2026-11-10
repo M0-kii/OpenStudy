@@ -38,10 +38,21 @@ export async function readDocument(path: string): Promise<ArrayBuffer> {
   return file.arrayBuffer();
 }
 
-export async function readOnlinePdf(url: string): Promise<ArrayBuffer> {
+export async function readOnlinePdf(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  signal?.throwIfAborted();
   if (isTauri()) {
-    const bytes = await invoke<ArrayBuffer | number[]>('read_online_pdf', { url });
-    return Array.isArray(bytes) ? Uint8Array.from(bytes).buffer : bytes;
+    const request = await invoke<number>('prepare_online_pdf');
+    const cancel = () => void invoke('cancel_online_pdf', { request }).catch(() => {});
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      if (signal?.aborted) cancel();
+      signal?.throwIfAborted();
+      const bytes = await invoke<ArrayBuffer | number[]>('read_online_pdf', { request, url });
+      signal?.throwIfAborted();
+      return Array.isArray(bytes) ? Uint8Array.from(bytes).buffer : bytes;
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+    }
   }
 
   let address: URL;
@@ -55,6 +66,8 @@ export async function readOnlinePdf(url: string): Promise<ArrayBuffer> {
   }
 
   const abort = new AbortController();
+  const cancel = () => abort.abort(signal?.reason);
+  signal?.addEventListener('abort', cancel, { once: true });
   const timeout = setTimeout(() => abort.abort(), 45_000);
   try {
     const response = await fetch(address, {
@@ -90,11 +103,13 @@ export async function readOnlinePdf(url: string): Promise<ArrayBuffer> {
     }
     return bytes.buffer;
   } catch (error) {
+    signal?.throwIfAborted();
     if (abort.signal.aborted) throw new Error('The PDF download timed out. Try again.');
     if (error instanceof TypeError) throw new Error('Could not download the PDF. The browser requires a direct link that permits cross-origin requests.');
     throw error;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener('abort', cancel);
     abort.abort();
   }
 }
@@ -102,7 +117,7 @@ export async function readOnlinePdf(url: string): Promise<ArrayBuffer> {
 export async function setFullscreen(value: boolean, blockAppSwitching = false): Promise<void> {
   if (isTauri()) {
     await invoke('set_study_fullscreen', { fullscreen: value, blockAppSwitching });
-  } else if (value && !document.fullscreenElement && document.fullscreenEnabled) {
+  } else if (value && !document.fullscreenElement && document.fullscreenEnabled && navigator.userActivation.isActive) {
     await document.documentElement.requestFullscreen();
   } else if (!value && document.fullscreenElement) {
     await document.exitFullscreen();

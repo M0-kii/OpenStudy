@@ -4,8 +4,8 @@ import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './readers.css';
 import { flattenContents } from './contents';
-import { findGroups, findPattern, findText, highlightMatch, indexText, matchRange, type GroupMatch } from './find';
-import { bounded, type DocumentPreview, type FindDirection, type PdfPosition, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
+import { emptyFindResult, findGroups, findPattern, groupedMatches, highlightMatch, indexText, matchRange, selectMatch, type GroupMatch } from './find';
+import { bounded, type DocumentPreview, type FindDirection, type FindResult, type PdfFit, type PdfPosition, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -74,19 +74,32 @@ export async function openPdf(
   const stack = document.createElement('div');
   stack.className = 'pdf-stack';
   const pageInset = 20;
+  const bottomInset = 30;
+  const horizontalInset = 56;
   const pageRatios = new Map<number, number>();
   const resident = new Set<PageSlot>();
   let slots: PageSlot[] = [];
   let stackContinuous = continuous;
   let stackWidth = 0;
   let stackHeight = 0;
-  let pageWidth = 0;
+  let baseWidth = 0;
+  let stackFit: Exclude<PdfFit, 'auto'> | undefined;
+  let stackZoom = 1;
   let scrollFrame = 0;
   let pinnedScroll = 0;
   let closed = false;
-  let position = normalize(initial?.page ?? 1, initial?.zoom ?? 1, initial?.scroll ?? 0);
+  const savedFit = initial?.fit;
+  const validFit = savedFit === 'auto' || savedFit === 'page' || savedFit === 'width' || savedFit === 'custom';
+  let initialZoom = initial?.zoom ?? 1;
+  if (initial && !validFit) {
+    // Old zoom values were relative to a capped page width.
+    const width = (host.clientWidth || 800) - horizontalInset;
+    initialZoom = bounded(initialZoom, 1, 0.55, 3) * Math.min(1080, Math.max(200, width)) / Math.max(1, width);
+  }
+  let position = normalize(initial?.page ?? 1, initialZoom, initial?.scroll ?? 0, validFit ? savedFit : initial ? 'custom' : 'auto');
   let published: PdfPosition | undefined;
   let search: { query: string; match: GroupMatch } | undefined;
+  let matches: ReturnType<typeof groupedMatches> | undefined;
   let searchId = 0;
   let unhighlight: (() => void) | undefined;
   let outline: Promise<ReaderContentsEntry[]> | undefined;
@@ -111,18 +124,20 @@ export async function openPdf(
     }
   }
 
-  function normalize(page: number, zoom: number, scroll: number): PdfPosition {
+  function normalize(page: number, zoom: number, scroll: number, fit: PdfFit = position.fit ?? 'auto'): PdfPosition {
     return {
       kind: 'pdf',
       page: Math.round(bounded(page, 1, 1, pdf.numPages)),
-      zoom: bounded(zoom, 1, 0.55, 3),
+      zoom: bounded(zoom, 1, 0.02, 3),
       scroll: bounded(scroll, 0, 0, 1),
+      fit,
     };
   }
 
   function publish(current: PdfPosition) {
     position = current;
-    if (published?.page === current.page && published.zoom === current.zoom && published.scroll === current.scroll) return;
+    if (published?.page === current.page && published.zoom === current.zoom && published.scroll === current.scroll
+      && published.fit === current.fit) return;
     published = current;
     onChange({
       position: { ...current },
@@ -139,7 +154,7 @@ export async function openPdf(
     element.setAttribute('aria-label', `Page ${page}`);
     element.setAttribute('aria-hidden', 'true');
     element.dataset.page = String(page);
-    return { page, element };
+    return { page, element, width: 0 };
   }
 
   function aspectRatio(page: number): number {
@@ -147,8 +162,12 @@ export async function openPdf(
   }
 
   function sizeSlot(slot: PageSlot) {
-    slot.element.style.width = `${pageWidth}px`;
-    slot.element.style.height = `${pageWidth * aspectRatio(slot.page)}px`;
+    const ratio = aspectRatio(slot.page);
+    const availableHeight = Math.max(1, stackHeight - pageInset - bottomInset);
+    slot.width = stackFit === 'page' ? Math.min(baseWidth, availableHeight / ratio)
+      : baseWidth * (stackFit === 'custom' ? stackZoom : 1);
+    slot.element.style.width = `${slot.width}px`;
+    slot.element.style.height = `${slot.width * ratio}px`;
   }
 
   function slotTop(slot: PageSlot): number {
@@ -169,20 +188,23 @@ export async function openPdf(
   function currentPosition(): PdfPosition {
     if (!slots.length || host.scrollTop === pinnedScroll || !host.clientHeight) return position;
     const slot = slots[indexAt(host.scrollTop)];
-    return normalize(slot.page, position.zoom, (host.scrollTop - slotTop(slot)) / Math.max(1, slot.element.offsetHeight));
+    const zoom = stackFit === 'custom' ? position.zoom : slot.width / baseWidth;
+    return normalize(slot.page, zoom, (host.scrollTop - slotTop(slot)) / Math.max(1, slot.element.offsetHeight));
   }
 
   function pin(next: PdfPosition) {
     const slot = slots[continuous ? next.page - 1 : 0];
     const last = slots[slots.length - 1];
-    const top = Math.round(slotTop(slot) + next.scroll * slot.element.offsetHeight);
+    const zoom = stackFit === 'custom' ? next.zoom : slot.width / baseWidth;
+    const scroll = !continuous && stackFit === 'page' ? 0 : next.scroll;
+    const top = Math.round(slotTop(slot) + scroll * slot.element.offsetHeight);
     const lastTop = slotTop(last);
     const end = last.element.offsetTop + last.element.offsetHeight;
     // Leave enough room to align short last pages and restore a deep anchor in single-page mode.
-    stack.style.paddingBottom = `${Math.max(30, Math.max(lastTop, top) + host.clientHeight - end)}px`;
+    stack.style.paddingBottom = `${Math.max(bottomInset, Math.max(lastTop, top) + host.clientHeight - end)}px`;
     host.scrollTop = top;
     pinnedScroll = host.scrollTop;
-    publish(next);
+    publish({ ...next, zoom, scroll });
   }
 
   function release(slot: PageSlot) {
@@ -217,7 +239,7 @@ export async function openPdf(
         pin(anchor);
         scheduleVisible();
       }
-      const { canvas, task, viewport } = pageCanvas(page, pageWidth / natural.width, window.devicePixelRatio || 1);
+      const { canvas, task, viewport } = pageCanvas(page, slot.width / natural.width, window.devicePixelRatio || 1);
       const article = slot.element;
       article.style.setProperty('--scale-factor', String(viewport.scale));
       article.style.setProperty('--user-unit', String(page.userUnit));
@@ -254,7 +276,8 @@ export async function openPdf(
       const top = host.scrollTop;
       const overscan = Math.min(600, host.clientHeight / 2);
       const first = Math.max(indexAt(top - overscan), indexAt(top) - 2);
-      const last = Math.min(indexAt(top + host.clientHeight + overscan), first + 11);
+      const bottom = top + host.clientHeight;
+      const last = Math.min(indexAt(bottom + overscan), Math.max(indexAt(bottom), first + 11));
       for (const slot of resident) if (slot.page - 1 < first || slot.page - 1 > last) release(slot);
       for (let index = first; index <= last; index++) void draw(slots[index]).catch(() => {});
     });
@@ -268,15 +291,23 @@ export async function openPdf(
   async function display(next: PdfPosition) {
     if (closed) return;
     const width = host.clientWidth || stackWidth || 800;
-    const nextPageWidth = Math.min(1080, Math.max(200, width - 56)) * next.zoom;
+    const height = host.clientHeight || stackHeight || 600;
+    const nextBaseWidth = Math.max(1, width - horizontalInset);
+    const nextFit = next.fit === undefined || next.fit === 'auto' ? (continuous ? 'width' : 'page') : next.fit;
     const rebuild = slots.length === 0 || stackContinuous !== continuous || (!continuous && slots[0].page !== next.page);
-    if (rebuild || nextPageWidth !== pageWidth) for (const slot of resident) release(slot);
+    const resize = nextBaseWidth !== baseWidth || nextFit !== stackFit
+      || (nextFit === 'page' && height !== stackHeight) || (nextFit === 'custom' && next.zoom !== stackZoom);
+    if (rebuild || resize) for (const slot of resident) release(slot);
+    stackWidth = width;
+    stackHeight = height;
+    baseWidth = nextBaseWidth;
+    stackFit = nextFit;
+    stackZoom = next.zoom;
     if (rebuild) {
       slots = continuous ? Array.from({ length: pdf.numPages }, (_, index) => makeSlot(index + 1)) : [makeSlot(next.page)];
       stackContinuous = continuous;
     }
-    if (rebuild || nextPageWidth !== pageWidth) {
-      pageWidth = nextPageWidth;
+    if (rebuild || resize) {
       for (const slot of slots) sizeSlot(slot);
     }
     if (rebuild) {
@@ -285,8 +316,6 @@ export async function openPdf(
       stack.replaceChildren(pages);
       if (!stack.isConnected) host.replaceChildren(stack);
     }
-    stackWidth = width;
-    stackHeight = host.clientHeight;
     if (position.page !== next.page) host.scrollLeft = 0;
     pin(next);
     scheduleVisible();
@@ -315,6 +344,10 @@ export async function openPdf(
     return target >= 1 && target <= pdf.numPages ? go(target) : Promise.resolve();
   }
 
+  function setFit(fit: 'page' | 'width') {
+    return display({ ...currentPosition(), fit });
+  }
+
   function markMatch(slot: PageSlot): Range | undefined {
     if (!search || search.match.group + 1 !== slot.page) return undefined;
     const layer = slot.element.querySelector('.textLayer');
@@ -328,32 +361,45 @@ export async function openPdf(
   function clearFind() {
     searchId++;
     search = undefined;
+    matches = undefined;
     unhighlight?.();
     unhighlight = undefined;
   }
 
-  async function find(query: string, direction: FindDirection = 'next') {
-    const pattern = findPattern(query);
-    if (!pattern || closed) return false;
-    const currentSearch = ++searchId;
-    const previous = search?.query === pattern.source ? search.match : undefined;
-    for (const { group, from } of findGroups(pdf.numPages, currentPosition().page - 1, direction, previous)) {
-      if (closed || currentSearch !== searchId) return false;
-      const pageNumber = group + 1;
-      let text = searchableText.get(pageNumber);
-      if (text === undefined) {
-        const page = await pdf.getPage(pageNumber);
-        const content = await page.getTextContent();
-        text = content.items.flatMap((item) => 'str' in item && item.str ? [item.str] : []).join(' ');
+  async function pageText(group: number): Promise<string> {
+    const pageNumber = group + 1;
+    let text = searchableText.get(pageNumber);
+    if (text === undefined) {
+      const page = await pdf.getPage(pageNumber);
+      const content = await page.getTextContent();
+      text = content.items.flatMap((item) => 'str' in item && item.str ? [item.str] : []).join(' ');
+      if (text.length <= 262_144) {
+        if (searchableText.size >= 32) searchableText.delete(searchableText.keys().next().value!);
         searchableText.set(pageNumber, text);
       }
-      const match = findText(text, pattern, direction, from);
+    }
+    return text;
+  }
+
+  async function find(query: string, direction: FindDirection = 'next', onProgress?: (result: FindResult) => void): Promise<FindResult> {
+    const pattern = findPattern(query);
+    if (!pattern || closed) return emptyFindResult;
+    const currentSearch = ++searchId;
+    const active = () => !closed && currentSearch === searchId;
+    const index = matches?.query === pattern.source ? matches : groupedMatches(pattern, pdf.numPages, pageText);
+    matches = index;
+    const previous = search?.query === pattern.source ? search.match : undefined;
+    for (const { group, from } of findGroups(pdf.numPages, currentPosition().page - 1, direction, previous)) {
+      if (!active()) return emptyFindResult;
+      const match = selectMatch(await index.read(group), direction, from);
       if (!match) continue;
-      if (closed || currentSearch !== searchId) return false;
+      if (!active()) return emptyFindResult;
+      const pageNumber = group + 1;
+      const selected = { ...match, group };
       unhighlight?.();
-      search = { query: pattern.source, match: { ...match, group } };
+      search = { query: pattern.source, match: selected };
       await go(pageNumber);
-      if (closed || currentSearch !== searchId || position.page !== pageNumber) return false;
+      if (!active() || position.page !== pageNumber) return emptyFindResult;
       const slot = slots[continuous ? group : 0];
       const range = markMatch(slot);
       if (range) {
@@ -361,23 +407,31 @@ export async function openPdf(
         pin(normalize(pageNumber, position.zoom, relativeTop / Math.max(1, slot.element.offsetHeight)));
         scheduleVisible();
       }
-      return true;
+      const result = index.result(selected);
+      if (result.counting && onProgress) void index.countRest(active, () => onProgress(index.result(selected)));
+      return result;
     }
-    if (currentSearch === searchId) clearFind();
-    return false;
+    if (!active()) return emptyFindResult;
+    const result = index.result();
+    clearFind();
+    return result;
   }
 
   type OutlineItem = Awaited<ReturnType<typeof pdf.getOutline>>[number];
 
-  async function goToOutline(target: NonNullable<OutlineItem['dest']>) {
+  async function resolveOutline(target: NonNullable<OutlineItem['dest']>) {
     if (closed) return;
     const destination = typeof target === 'string' ? await pdf.getDestination(target) : target;
     const ref = destination?.[0];
     const index = typeof ref === 'number' ? ref : ref && Number.isInteger(ref.num) && Number.isInteger(ref.gen)
       ? await pdf.getPageIndex(ref) : -1;
-    if (closed || !Number.isInteger(index) || index < 0 || index >= pdf.numPages) return;
+    if (!closed && Number.isInteger(index) && index >= 0 && index < pdf.numPages) {
+      return { pageNumber: index + 1, destination };
+    }
+  }
 
-    const page = await pdf.getPage(index + 1);
+  async function goToOutline({ pageNumber, destination }: NonNullable<Awaited<ReturnType<typeof resolveOutline>>>) {
+    const page = await pdf.getPage(pageNumber);
     const viewport = page.getViewport({ scale: 1 });
     const mode = destination?.[1]?.name;
     const x = mode === 'XYZ' || mode === 'FitR' ? destination?.[2] : undefined;
@@ -386,16 +440,35 @@ export async function openPdf(
     const scroll = typeof y === 'number' && Number.isFinite(y)
       ? viewport.convertToViewportPoint(typeof x === 'number' && Number.isFinite(x) ? x : page.view[0], y)[1] / viewport.height
       : 0;
-    await display(normalize(index + 1, position.zoom, scroll));
+    await display(normalize(pageNumber, position.zoom, scroll));
   }
 
   function contents() {
     if (closed) return Promise.resolve([]);
-    return outline ??= pdf.getOutline().then((items) => flattenContents(items ?? [], (item) => item.items, (item, depth) => {
-      const label = typeof item.title === 'string' ? item.title.trim() : '';
-      const target = item.dest;
-      return label && target ? { label, depth, goTo: () => goToOutline(target) } : undefined;
-    }));
+    return outline ??= pdf.getOutline().then(async (items) => {
+      const resolvePages: (() => Promise<void>)[] = [];
+      const entries = flattenContents(items ?? [], (item) => item.items, (item, depth) => {
+        const label = typeof item.title === 'string' ? item.title.trim() : '';
+        const target = item.dest;
+        if (!label || !target) return;
+        let resolution: ReturnType<typeof resolveOutline> | undefined;
+        const resolve = () => resolution ??= resolveOutline(target);
+        const entry: ReaderContentsEntry = {
+          label,
+          depth,
+          goTo: async () => {
+            const destination = await resolve();
+            if (destination) await goToOutline(destination);
+          },
+        };
+        resolvePages.push(async () => { entry.page = (await resolve().catch(() => undefined))?.pageNumber; });
+        return entry;
+      });
+      for (let offset = 0; offset < resolvePages.length && !closed; offset += 16) {
+        await Promise.all(resolvePages.slice(offset, offset + 16).map((resolve) => resolve()));
+      }
+      return entries;
+    });
   }
 
   try {
@@ -411,12 +484,10 @@ export async function openPdf(
       goTo: async (target) => { if (target.kind === 'pdf') await display(normalize(target.page, position.zoom, target.scroll)); },
       zoom: (delta) => {
         const current = currentPosition();
-        return display(normalize(current.page, current.zoom * 1.18 ** delta, current.scroll));
+        return display(normalize(current.page, current.zoom * 1.18 ** delta, current.scroll, 'custom'));
       },
-      fit: () => {
-        const current = currentPosition();
-        return display(normalize(current.page, 1, current.scroll));
-      },
+      fit: () => setFit('width'),
+      setPdfFit: setFit,
       setPdfContinuous: async (enabled) => {
         if (continuous === enabled || closed) return;
         const anchor = currentPosition();
@@ -438,6 +509,7 @@ export async function openPdf(
 interface PageSlot {
   page: number;
   element: HTMLElement;
+  width: number;
   drawing?: PageDrawing;
 }
 

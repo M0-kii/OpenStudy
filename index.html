@@ -18,6 +18,7 @@
         <div id="window-menu" class="window-menu" role="group" aria-label="App commands" inert>
           <div class="window-menu-group">
             <button type="button" class="quiet-button" data-command="choose-file"><i class="icon" data-lucide="folder-open" aria-hidden="true"></i><span>Open file</span><kbd id="open-file-shortcut" aria-hidden="true">Ctrl+O</kbd></button>
+            <button type="button" class="quiet-button" data-command="open-link"><i class="icon" data-lucide="link-2" aria-hidden="true"></i><span>Open PDF link</span></button>
           </div>
           <div class="window-menu-group">
             <button type="button" class="quiet-button" data-command="nav-library"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span>Study space</span></button>
@@ -45,6 +46,7 @@
           <nav class="sidebar-actions" aria-label="Workspace">
             <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page" aria-label="Study space" title="Study space"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span class="sidebar-label">Study space</span></button>
             <button type="button" id="choose-file" class="sidebar-button" aria-label="Open file" title="Open file"><i class="icon" data-lucide="plus" aria-hidden="true"></i><span class="sidebar-label">Open file</span></button>
+            <button type="button" id="open-link" class="sidebar-button" aria-label="Open PDF link" title="Open PDF link"><i class="icon" data-lucide="link-2" aria-hidden="true"></i><span class="sidebar-label">Open PDF link</span></button>
           </nav>
           <section class="sidebar-library" aria-labelledby="recent-heading">
             <h2 id="recent-heading">Recent files</h2>
@@ -61,12 +63,24 @@
         <section id="launcher-screen" class="launcher" aria-labelledby="workspace-title">
           <header class="workspace-heading"><h1 id="workspace-title" tabindex="-1">Study space</h1></header>
           <p id="launcher-error" class="form-error" role="alert" hidden></p>
+          <button type="button" id="reconnect-document" class="button button-outline reconnect-document" hidden>Locate file</button>
           <p id="launcher-loading" class="workspace-loading" role="status" hidden>Opening document…</p>
+          <button type="button" id="continue-reading" class="continue-reading" hidden>
+            <span class="continue-copy">
+              <span class="continue-label">Continue reading</span>
+              <bdi id="continue-title"></bdi>
+            </span>
+            <bdi id="continue-location"></bdi>
+            <i class="icon" data-lucide="chevron-right" aria-hidden="true"></i>
+          </button>
           <div class="workspace-empty">
             <svg class="icon empty-file-icon" aria-hidden="true"><use href="#i-file" /></svg>
             <h2>No document open</h2>
             <p>Open a PDF, EPUB, or Markdown file.</p>
-            <button type="button" id="choose-file-inline" class="button button-primary">Open file</button>
+            <div class="setup-actions">
+              <button type="button" id="choose-file-inline" class="button button-primary">Open file</button>
+              <button type="button" id="open-link-inline" class="quiet-button">Open PDF link</button>
+            </div>
           </div>
 
           <section id="selected-document" class="session-setup" aria-labelledby="selected-name" hidden>
@@ -89,6 +103,12 @@
                 <button type="button" id="choose-another" class="quiet-button">Choose another file</button>
                 <button type="button" id="launcher-review-notes" class="quiet-button" hidden>Look up later</button>
               </div>
+              <p class="break-hint"><kbd>Esc</kbd> to take a break.</p>
+              <details class="notification-setup">
+                <summary>Notification setup</summary>
+                <p id="launcher-notifications"></p>
+                <button type="button" id="launcher-os-settings" class="button button-outline" hidden>Open Windows settings</button>
+              </details>
             </div>
           </section>
         </section>
@@ -99,6 +119,10 @@
             <header id="reader-toolbar" class="reader-toolbar" aria-label="Reader controls" inert>
               <div class="reader-file"><img src="/ribbon.svg" alt="" width="16" height="19" /><h1 id="reader-title"></h1></div>
               <div class="reader-controls">
+                <div class="control-group" role="group" aria-label="Document navigation">
+                  <button type="button" id="toggle-contents" class="icon-button" title="Contents" aria-label="Contents" aria-controls="reader-contents" aria-expanded="false"><i class="icon" data-lucide="list" aria-hidden="true"></i></button>
+                  <button type="button" id="toggle-find" class="icon-button" title="Find in document" aria-label="Find in document" aria-controls="reader-find" aria-expanded="false"><i class="icon" data-lucide="search" aria-hidden="true"></i></button>
+                </div>
                 <div class="control-group zoom-controls" role="group" aria-label="Reading size">
                   <button type="button" id="zoom-out" class="icon-button" title="Decrease reading size" aria-label="Decrease reading size"><i class="icon" data-lucide="minus" aria-hidden="true"></i></button>
                   <output id="zoom-level" class="zoom-level" aria-live="polite"></output>
@@ -127,6 +151,26 @@
           <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
           <p id="reader-location-status" class="visually-hidden" role="status"></p>
           <div id="reader-viewport" class="reader-viewport" tabindex="0" role="region" aria-label="Document"></div>
+          <aside id="reader-contents" class="reader-panel reader-contents" aria-labelledby="contents-heading" hidden>
+            <div class="reader-panel-heading">
+              <h2 id="contents-heading">Contents</h2>
+              <button type="button" id="close-contents" class="icon-button" aria-label="Close contents"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
+            </div>
+            <p id="contents-status" role="status"></p>
+            <ol id="contents-list"></ol>
+          </aside>
+          <form id="reader-find" class="reader-panel reader-find" role="search" aria-label="Find in document" hidden>
+            <div class="reader-panel-heading">
+              <label for="find-query">Find in document</label>
+              <button type="button" id="close-find" class="icon-button" aria-label="Close search"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
+            </div>
+            <input type="search" id="find-query" required maxlength="500" autocomplete="off" />
+            <div class="find-actions">
+              <button type="submit" id="find-previous" class="quiet-button">Previous</button>
+              <button type="submit" id="find-next" class="button button-outline">Next</button>
+            </div>
+            <p id="search-result" role="status" hidden></p>
+          </form>
 
           <div class="reader-bottom" role="group" aria-label="Reading navigation">
             <button type="button" id="previous-page" class="icon-button reader-edge-button" title="Previous page" aria-label="Previous page"><i class="icon" data-lucide="chevron-left" aria-hidden="true"></i></button>
@@ -138,7 +182,7 @@
                 </div>
                 <div id="reader-session-card" class="reader-session-card" role="group" aria-label="Session actions" inert>
                   <div class="session-card-inner">
-                    <button type="button" id="take-break" class="quiet-button"><i class="icon" data-lucide="pause" aria-hidden="true"></i>Take a break</button>
+                    <button type="button" id="take-break" class="quiet-button" aria-keyshortcuts="Escape"><i class="icon" data-lucide="pause" aria-hidden="true"></i>Take a break<kbd aria-hidden="true">Esc</kbd></button>
                     <button type="button" id="end-session" class="quiet-button"><i class="icon" data-lucide="log-out" aria-hidden="true"></i>End session</button>
                   </div>
                 </div>
@@ -211,20 +255,56 @@
               </div>
               <input type="checkbox" id="continuous-pdf" aria-describedby="continuous-pdf-help" />
             </div>
+            <div id="windows-focus-setting" class="setting-row" hidden>
+              <div class="setting-copy">
+                <label for="block-app-switching">Block Alt+Tab while reading</label>
+                <p id="block-app-switching-help">Press Esc to take a break and switch apps again.</p>
+              </div>
+              <input type="checkbox" id="block-app-switching" aria-describedby="block-app-switching-help" />
+            </div>
           </section>
           <section id="settings-notifications" class="settings-list" role="tabpanel" aria-labelledby="settings-tab-notifications" tabindex="0" hidden>
             <p id="notifications-description" class="settings-note"></p>
             <button type="button" id="open-os-settings" class="button button-outline" hidden>Open Windows settings</button>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label for="battery-alerts">Low battery alerts</label>
+                <p id="battery-alerts-help">During a session, show an alert at 20% and 10% when your laptop is unplugged.</p>
+              </div>
+              <input type="checkbox" id="battery-alerts" aria-describedby="battery-alerts-help" checked />
+            </div>
           </section>
         </section>
       </main>
     </div>
+
+    <aside id="battery-alert" class="battery-alert" aria-label="Battery alert" hidden>
+      <i class="icon" data-lucide="battery-low" aria-hidden="true"></i>
+      <p id="battery-message" role="status"></p>
+      <button type="button" id="dismiss-battery" class="icon-button" aria-label="Dismiss battery alert"><i class="icon" data-lucide="x" aria-hidden="true"></i></button>
+    </aside>
+
+    <dialog id="link-dialog" aria-labelledby="link-heading">
+      <form id="link-form" class="dialog-form">
+        <h2 id="link-heading">Open PDF link</h2>
+        <label for="pdf-link">Direct PDF URL</label>
+        <input id="pdf-link" type="url" required maxlength="8192" placeholder="https://…" autocomplete="off" spellcheck="false" aria-describedby="link-help" />
+        <p id="link-help">Use a link to the PDF file.</p>
+        <p id="link-status" role="status" hidden></p>
+        <p id="link-error" class="form-error" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button type="button" id="cancel-link" class="quiet-button">Cancel</button>
+          <button type="submit" id="submit-link" class="button button-primary">Open PDF</button>
+        </div>
+      </form>
+    </dialog>
 
     <dialog id="note-dialog" aria-labelledby="note-heading">
       <form id="note-form" class="dialog-form">
         <h2 id="note-heading">Save for later</h2>
         <label for="note-text">What do you want to look up?</label>
         <textarea id="note-text" name="note" rows="5" required maxlength="4000"></textarea>
+        <p id="note-save-error" class="form-error" role="alert" hidden></p>
         <div class="dialog-actions">
           <button type="button" id="cancel-note" class="quiet-button">Cancel</button>
           <button type="submit" id="save-note" class="button button-primary">Save</button>
@@ -260,11 +340,6 @@
           <option value="900">Wide</option>
         </select>
       </div>
-      <form id="pdf-search-form" class="pdf-search-form" role="search">
-        <label for="pdf-search">Find in PDF</label>
-        <div class="search-fields"><input type="search" id="pdf-search" required /><button type="submit" class="button button-outline">Find</button></div>
-        <p id="search-result" role="status"></p>
-      </form>
       <div class="dialog-actions"><button type="button" id="close-options" class="button button-outline">Done</button></div>
     </dialog>
 

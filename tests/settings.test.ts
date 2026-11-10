@@ -9,10 +9,16 @@ test('study settings persist validated values and recover from malformed storage
     setItem: (key: string, value: string) => { values.set(key, value); },
   };
 
-  const defaults = { defaultMinutes: 0, showCountdown: true, pdfContinuous: false, sidebarCollapsed: false, theme: 'dark' };
+  const defaults = {
+    defaultMinutes: 0, showCountdown: true, pdfContinuous: false, sidebarCollapsed: false,
+    theme: 'dark', blockAppSwitching: false, batteryAlerts: true,
+  };
   assert.deepEqual(loadSettings(storage), defaults);
 
-  const changed = { defaultMinutes: 45, showCountdown: false, pdfContinuous: true, sidebarCollapsed: true, theme: 'light' } as const;
+  const changed = {
+    defaultMinutes: 45, showCountdown: false, pdfContinuous: true, sidebarCollapsed: true,
+    theme: 'light', blockAppSwitching: true, batteryAlerts: false,
+  } as const;
   saveSettings(changed, storage);
   assert.deepEqual(loadSettings(storage), changed);
 
@@ -24,4 +30,5 @@ test('study settings persist validated values and recover from malformed storage
     ...defaults, defaultMinutes: 25, showCountdown: false,
   });
   assert.deepEqual(loadSettings({ getItem: () => '{"theme":"unknown"}' }), defaults);
+  assert.deepEqual(loadSettings({ getItem: () => '{"blockAppSwitching":"true","batteryAlerts":"false"}' }), defaults);
 });

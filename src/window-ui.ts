@@ -1,13 +1,13 @@
 import {
-  createIcons, ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, LogOut, Minus,
-  NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Settings2, SlidersHorizontal, Square, X,
+  createIcons, BatteryLow, ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, Link2, List, LogOut, Minus,
+  NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Search, Settings2, SlidersHorizontal, Square, X,
 } from 'lucide';
 
 export function drawIcons(): void {
   createIcons({
     icons: {
-      ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, LogOut, Minus,
-      NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Settings2, SlidersHorizontal, Square, X,
+      BatteryLow, ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, Link2, List, LogOut, Minus,
+      NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Search, Settings2, SlidersHorizontal, Square, X,
     },
   });
 }

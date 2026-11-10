@@ -1,8 +1,11 @@
 import { Book } from 'epubjs';
 import type Contents from 'epubjs/types/contents';
 import type { Location } from 'epubjs/types/rendition';
+import type Section from 'epubjs/types/section';
 import './readers.css';
-import { bounded, epubDefaults, type DocumentPreview, type EpubLayout, type EpubPosition, type Reader, type ReaderState } from './index';
+import { flattenContents } from './contents';
+import { findGroups, findPattern, findText, indexText, matchRange, type GroupMatch } from './find';
+import { bounded, epubDefaults, type DocumentPreview, type EpubLayout, type EpubPosition, type FindDirection, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
 
 const chapterPolicy = "default-src 'none'; style-src 'unsafe-inline' blob: data:; img-src blob: data:; font-src blob: data:; media-src blob: data:; base-uri 'self'; form-action 'none'";
 const activeElements = new Set(['applet', 'embed', 'fencedframe', 'foreignobject', 'frame', 'frameset', 'iframe', 'object', 'portal', 'script', 'template', 'animate', 'animatemotion', 'animatetransform', 'set']);
@@ -122,10 +125,17 @@ export async function openEpub(
   signal?: AbortSignal,
 ): Promise<Reader> {
   const book = await loadBook(bytes, signal);
+  const sections: Section[] = [];
+  book.spine.each((section: Section) => sections.push(section));
   let closed = false;
   let layout = normalizeLayout(initial);
   let anchor = typeof initial?.cfi === 'string' && initial.cfi.startsWith('epubcfi(') ? initial.cfi : '';
   let state: ReaderState | undefined;
+  let sectionIndex = 0;
+  let outline: Promise<ReaderContentsEntry[]> | undefined;
+  let search: { query: string; match: GroupMatch } | undefined;
+  let searchId = 0;
+  let marked: string | undefined;
   let dimensions = { width: 0, height: 0 };
   const page = document.createElement('div');
   page.className = 'epub-book';
@@ -167,6 +177,7 @@ export async function openEpub(
 
   function relocated(location: Location) {
     if (closed || !location?.start?.cfi) return;
+    sectionIndex = location.start.index;
     state = {
       position: { kind: 'epub', cfi: anchor || location.start.cfi, ...layout },
       label: titleFor(location),
@@ -208,7 +219,7 @@ export async function openEpub(
         metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, bubbles: true, cancelable: true,
       });
       if (!host.dispatchEvent(forwarded)) event.preventDefault();
-    });
+    }, true);
     contents.document.addEventListener('click', (event) => {
       const target = event.target as Element | null;
       if (target?.closest?.('a[href]')) anchor = '';
@@ -243,12 +254,98 @@ export async function openEpub(
     await display(anchor || undefined);
   }
 
+  function chapterTarget(value: unknown): string | undefined {
+    const href = typeof value === 'string' ? value.trim() : '';
+    if (!href || absoluteUrl.test(href) || href.includes('\\')) return undefined;
+    const origin = 'https://openstudy.invalid';
+    const navPath = book.packaging.navPath || book.packaging.ncxPath || '';
+    try {
+      const url = new URL(href, new URL(navPath, `${origin}/`));
+      if (url.origin !== origin) return undefined;
+      const candidates = [url.pathname.replace(/^\//, '') + url.hash, href];
+      return candidates.find((target) => target.split('#')[0] && book.spine.get(target));
+    } catch {
+      return undefined;
+    }
+  }
+
+  function contents() {
+    if (closed) return Promise.resolve([]);
+    return outline ??= limit(book.loaded.navigation, 'This EPUB has no readable contents.', signal).then((navigation) =>
+      closed ? [] : flattenContents(navigation.toc, (item) => item.subitems, (item, depth) => {
+        const label = typeof item.label === 'string' ? item.label.trim() : '';
+        const target = chapterTarget(item.href);
+        if (!label || !target) return undefined;
+        return {
+          label, depth,
+          goTo: async () => {
+            if (closed) return;
+            anchor = '';
+            await display(target);
+          },
+        };
+      }));
+  }
+
+  function clearMarker() {
+    if (marked) rendition.annotations.remove(marked, 'highlight');
+    marked = undefined;
+  }
+
+  function clearFind() {
+    searchId++;
+    search = undefined;
+    clearMarker();
+  }
+
+  async function matchSection(section: Section, pattern: RegExp, direction: FindDirection, from?: number) {
+    const wasLoaded = Boolean(section.document);
+    try {
+      await section.load(book.load.bind(book));
+      const body = section.document?.querySelector('body');
+      if (!body || closed) return undefined;
+      const text = indexText(body);
+      const match = findText(text.text, pattern, direction, from);
+      const range = match && matchRange(text, match);
+      if (!match || !range) return undefined;
+      return { match, cfi: section.cfiFromRange(range) };
+    } catch {
+      return undefined;
+    } finally {
+      if (!wasLoaded && !closed) section.unload();
+    }
+  }
+
+  async function find(query: string, direction: FindDirection = 'next') {
+    const pattern = findPattern(query);
+    if (!pattern || closed || !sections.length) return false;
+    const currentSearch = ++searchId;
+    const previous = search?.query === pattern.source ? search.match : undefined;
+    for (const { group, from } of findGroups(sections.length, sectionIndex, direction, previous)) {
+      if (closed || currentSearch !== searchId) return false;
+      const result = await matchSection(sections[group], pattern, direction, from);
+      if (!result) continue;
+      if (closed || currentSearch !== searchId) return false;
+      clearMarker();
+      search = { query: pattern.source, match: { ...result.match, group } };
+      anchor = result.cfi;
+      await display(result.cfi);
+      if (closed || currentSearch !== searchId) return false;
+      marked = result.cfi;
+      rendition.annotations.highlight(marked, undefined, undefined, 'openstudy-find-hit', { fill: '#f6c453', 'fill-opacity': '.45' });
+      return true;
+    }
+    if (currentSearch === searchId) clearFind();
+    return false;
+  }
+
   function destroy() {
     if (closed) return;
     closed = true;
     signal?.removeEventListener('abort', destroy);
     observer.disconnect();
     rendition.off('relocated', relocated);
+    clearFind();
     book.destroy();
     page.remove();
   }
@@ -272,6 +369,9 @@ export async function openEpub(
       zoom: (delta) => setEpubLayout({ fontSize: layout.fontSize + delta * 2 }),
       fit: () => setEpubLayout(epubDefaults),
       setEpubLayout,
+      contents,
+      find,
+      clearFind,
       destroy,
     };
   } catch (error) {

@@ -3,7 +3,9 @@ import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './readers.css';
-import { bounded, type DocumentPreview, type PdfPosition, type Reader, type ReaderState } from './index';
+import { flattenContents } from './contents';
+import { findGroups, findPattern, findText, highlightMatch, indexText, matchRange, type GroupMatch } from './find';
+import { bounded, type DocumentPreview, type FindDirection, type PdfPosition, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -84,8 +86,10 @@ export async function openPdf(
   let closed = false;
   let position = normalize(initial?.page ?? 1, initial?.zoom ?? 1, initial?.scroll ?? 0);
   let published: PdfPosition | undefined;
-  let search = { query: '', page: 0 };
+  let search: { query: string; match: GroupMatch } | undefined;
   let searchId = 0;
+  let unhighlight: (() => void) | undefined;
+  let outline: Promise<ReaderContentsEntry[]> | undefined;
   const searchableText = new Map<number, string>();
   const resize = new ResizeObserver(() => {
     if (!host.clientWidth || !host.clientHeight) return;
@@ -182,6 +186,7 @@ export async function openPdf(
   }
 
   function release(slot: PageSlot) {
+    if (search && slot.page === search.match.group + 1) unhighlight?.();
     slot.drawing?.task?.cancel();
     slot.drawing?.textLayer?.cancel();
     slot.drawing = undefined;
@@ -229,6 +234,7 @@ export async function openPdf(
       drawing.textLayer = undefined;
       article.replaceChildren(canvas, text);
       article.removeAttribute('aria-hidden');
+      markMatch(slot);
     } catch (error) {
       if (closed || slot.drawing !== drawing) return;
       const message = document.createElement('p');
@@ -294,6 +300,7 @@ export async function openPdf(
     cancelAnimationFrame(scrollFrame);
     host.removeEventListener('scroll', scrolled);
     signal?.removeEventListener('abort', destroy);
+    clearFind();
     for (const slot of resident) release(slot);
     stack.remove();
     void loading.destroy().catch(() => {});
@@ -308,29 +315,87 @@ export async function openPdf(
     return target >= 1 && target <= pdf.numPages ? go(target) : Promise.resolve();
   }
 
-  async function find(query: string) {
-    query = query.trim().toLocaleLowerCase().replace(/\s+/g, ' ');
-    if (!query || closed) return false;
+  function markMatch(slot: PageSlot): Range | undefined {
+    if (!search || search.match.group + 1 !== slot.page) return undefined;
+    const layer = slot.element.querySelector('.textLayer');
+    const range = layer && matchRange(indexText(layer, true), search.match);
+    if (!range) return undefined;
+    unhighlight?.();
+    unhighlight = highlightMatch(range, slot.element);
+    return range;
+  }
+
+  function clearFind() {
+    searchId++;
+    search = undefined;
+    unhighlight?.();
+    unhighlight = undefined;
+  }
+
+  async function find(query: string, direction: FindDirection = 'next') {
+    const pattern = findPattern(query);
+    if (!pattern || closed) return false;
     const currentSearch = ++searchId;
-    const page = currentPosition().page;
-    const start = search.query === query && search.page === page ? page + 1 : page;
-    for (let offset = 0; offset < pdf.numPages; offset++) {
+    const previous = search?.query === pattern.source ? search.match : undefined;
+    for (const { group, from } of findGroups(pdf.numPages, currentPosition().page - 1, direction, previous)) {
       if (closed || currentSearch !== searchId) return false;
-      const pageNumber = (start + offset - 1) % pdf.numPages + 1;
+      const pageNumber = group + 1;
       let text = searchableText.get(pageNumber);
       if (text === undefined) {
         const page = await pdf.getPage(pageNumber);
         const content = await page.getTextContent();
-        text = content.items.map((item) => 'str' in item ? item.str : '').join(' ').toLocaleLowerCase().replace(/\s+/g, ' ');
+        text = content.items.flatMap((item) => 'str' in item && item.str ? [item.str] : []).join(' ');
         searchableText.set(pageNumber, text);
       }
-      if (text.includes(query) && currentSearch === searchId) {
-        search = { query, page: pageNumber };
-        await go(pageNumber);
-        return true;
+      const match = findText(text, pattern, direction, from);
+      if (!match) continue;
+      if (closed || currentSearch !== searchId) return false;
+      unhighlight?.();
+      search = { query: pattern.source, match: { ...match, group } };
+      await go(pageNumber);
+      if (closed || currentSearch !== searchId || position.page !== pageNumber) return false;
+      const slot = slots[continuous ? group : 0];
+      const range = markMatch(slot);
+      if (range) {
+        const relativeTop = range.getBoundingClientRect().top - slot.element.getBoundingClientRect().top - host.clientHeight / 4;
+        pin(normalize(pageNumber, position.zoom, relativeTop / Math.max(1, slot.element.offsetHeight)));
+        scheduleVisible();
       }
+      return true;
     }
+    if (currentSearch === searchId) clearFind();
     return false;
+  }
+
+  type OutlineItem = Awaited<ReturnType<typeof pdf.getOutline>>[number];
+
+  async function goToOutline(target: NonNullable<OutlineItem['dest']>) {
+    if (closed) return;
+    const destination = typeof target === 'string' ? await pdf.getDestination(target) : target;
+    const ref = destination?.[0];
+    const index = typeof ref === 'number' ? ref : ref && Number.isInteger(ref.num) && Number.isInteger(ref.gen)
+      ? await pdf.getPageIndex(ref) : -1;
+    if (closed || !Number.isInteger(index) || index < 0 || index >= pdf.numPages) return;
+
+    const page = await pdf.getPage(index + 1);
+    const viewport = page.getViewport({ scale: 1 });
+    const mode = destination?.[1]?.name;
+    const x = mode === 'XYZ' || mode === 'FitR' ? destination?.[2] : undefined;
+    const y = mode === 'XYZ' ? destination?.[3] : mode === 'FitR' ? destination?.[5]
+      : mode === 'FitH' || mode === 'FitBH' ? destination?.[2] : undefined;
+    const scroll = typeof y === 'number' && Number.isFinite(y)
+      ? viewport.convertToViewportPoint(typeof x === 'number' && Number.isFinite(x) ? x : page.view[0], y)[1] / viewport.height
+      : 0;
+    await display(normalize(index + 1, position.zoom, scroll));
+  }
+
+  function contents() {
+    if (closed) return Promise.resolve([]);
+    return outline ??= pdf.getOutline().then((items) => flattenContents(items ?? [], (item) => item.items, (item, depth) => {
+      const label = typeof item.title === 'string' ? item.title.trim() : '';
+      const target = item.dest;
+      return label && target ? { label, depth, goTo: () => goToOutline(target) } : undefined;
+    }));
   }
 
   try {
@@ -359,7 +424,9 @@ export async function openPdf(
         await display(anchor);
       },
       setEpubLayout: async () => {},
+      contents,
       find,
+      clearFind,
       destroy,
     };
   } catch (error) {

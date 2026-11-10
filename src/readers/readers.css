@@ -32,3 +32,7 @@
   background: #fafafa;
   outline: 1px solid var(--line);
 }
+
+::highlight(openstudy-find) { background: #f6c453; color: #171717; }
+.pdf-page .textLayer *::highlight(openstudy-find) { background: #f6c45390; color: transparent; }
+.find-marker { position: absolute; z-index: 1; pointer-events: none; background: #f6c45390; mix-blend-mode: multiply; }

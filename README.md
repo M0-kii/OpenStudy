@@ -1,12 +1,12 @@
 # OpenStudy
 
-OpenStudy is a desktop reading space for PDFs, EPUBs, and Markdown files. Choose a file, start a fullscreen session, and return to the same spot after a break or the next time you open the app.
+OpenStudy is a desktop reading space for PDFs, EPUBs, and Markdown files. Open a file or paste a direct PDF link, then start a fullscreen session.
 
-- **Recent files** restores the page, passage, or scroll position and reading size for each document.
-- Move the pointer to the top edge or activate the **Reading toolbar** to reveal reading options. Use the corner arrows or **←** and **→** to navigate, or jump to a page in a PDF from the toolbar.
+- **Continue reading** returns to your last page, passage, or scroll position in one click. **Recent files** keeps a separate history for each document. Use **Locate file** if a document has moved.
+- Move the pointer to the top edge to reveal the reading toolbar. Open **Contents** to jump between sections, or use **Ctrl+F** (**⌘F** on Mac) to find text. You can also jump straight to a page in a PDF.
 - Open **Session controls** at the bottom right to take a break or end the session. **Esc** leaves reading mode and pauses the optional timer when menus are closed.
 - **Look up later** saves a note with a link to the current reading position.
-- Books, progress, and notes stay on your device.
+- Progress, notes, and PDF links stay on your device. PDFs opened from links need a connection when reopened.
 
 ## Downloads
 
@@ -18,7 +18,9 @@ Open **Settings** from the sidebar. Choose a light or dark theme under **Appeara
 
 On Windows 11 and KDE Plasma, enable your desktop’s fullscreen Do Not Disturb rule. On macOS, add OpenStudy to a Focus schedule. That schedule follows the active app and can stay on during a windowed break. On GNOME, use the Do Not Disturb switch in the notification list.
 
-On Windows, OpenStudy attempts to block **Alt+Tab** and **Alt+Shift+Tab** while its fullscreen reader has focus. **Esc** still takes a break. macOS and Linux keep their desktop app-switching shortcuts.
+On Windows, you can turn on **Block Alt+Tab while reading** under **Study sessions**. Press **Esc** to take a break and switch apps again.
+
+On laptops, OpenStudy can show a quiet alert at 20% and 10% while the battery is discharging. You can turn these alerts off under **Notifications**.
 
 ## Build from source
 

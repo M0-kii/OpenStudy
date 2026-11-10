@@ -1,8 +1,10 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import type { BatteryStatus } from './battery';
 
 type Selection = { name: string; path: string };
 type DocumentSelection = Selection & { bytes: ArrayBuffer };
+const maxDocumentBytes = 256 * 1024 * 1024;
 
 export function platform(): 'windows' | 'macos' | 'linux' | 'browser' {
   if (!isTauri()) return 'browser';
@@ -20,7 +22,7 @@ export async function pickDocument(): Promise<DocumentSelection | null> {
   const file = await chooseBrowserFile();
   if (!file) return null;
   if (!/\.(pdf|epub|md|markdown)$/i.test(file.name)) throw new Error('Choose a PDF, EPUB, or Markdown file.');
-  if (file.size > 256 * 1024 * 1024) throw new Error('Choose a document smaller than 256 MB.');
+  if (file.size > maxDocumentBytes) throw new Error('Choose a document smaller than 256 MB.');
   const path = `preview:${file.name}:${file.lastModified}:${file.size}`;
   await browserFile(path, file);
   return { name: file.name, path, bytes: await file.arrayBuffer() };
@@ -36,9 +38,70 @@ export async function readDocument(path: string): Promise<ArrayBuffer> {
   return file.arrayBuffer();
 }
 
-export async function setFullscreen(value: boolean): Promise<void> {
+export async function readOnlinePdf(url: string): Promise<ArrayBuffer> {
   if (isTauri()) {
-    await invoke('set_study_fullscreen', { fullscreen: value });
+    const bytes = await invoke<ArrayBuffer | number[]>('read_online_pdf', { url });
+    return Array.isArray(bytes) ? Uint8Array.from(bytes).buffer : bytes;
+  }
+
+  let address: URL;
+  try {
+    address = new URL(url.trim());
+  } catch {
+    throw new Error('Enter a valid HTTP or HTTPS PDF link.');
+  }
+  if (!['http:', 'https:'].includes(address.protocol) || address.username || address.password) {
+    throw new Error('Use an HTTP or HTTPS link without a username or password.');
+  }
+
+  const abort = new AbortController();
+  const timeout = setTimeout(() => abort.abort(), 45_000);
+  try {
+    const response = await fetch(address, {
+      credentials: 'omit',
+      redirect: 'error',
+      referrerPolicy: 'no-referrer',
+      signal: abort.signal,
+    });
+    if (!response.ok) throw new Error(`The PDF server returned HTTP ${response.status}.`);
+    if (Number(response.headers.get('content-length')) > maxDocumentBytes) {
+      throw new Error('Choose a PDF smaller than 256 MB.');
+    }
+
+    const stream = response.body?.getReader();
+    if (!stream) throw new Error('This URL did not return a PDF.');
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const chunk = await stream.read();
+      if (chunk.done) break;
+      size += chunk.value.byteLength;
+      if (size > maxDocumentBytes) throw new Error('Choose a PDF smaller than 256 MB.');
+      chunks.push(chunk.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    if (!new TextDecoder().decode(bytes.subarray(0, 1024)).includes('%PDF-')) {
+      throw new Error('This URL did not return a PDF.');
+    }
+    return bytes.buffer;
+  } catch (error) {
+    if (abort.signal.aborted) throw new Error('The PDF download timed out. Try again.');
+    if (error instanceof TypeError) throw new Error('Could not download the PDF. The browser requires a direct link that permits cross-origin requests.');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    abort.abort();
+  }
+}
+
+export async function setFullscreen(value: boolean, blockAppSwitching = false): Promise<void> {
+  if (isTauri()) {
+    await invoke('set_study_fullscreen', { fullscreen: value, blockAppSwitching });
   } else if (value && !document.fullscreenElement && document.fullscreenEnabled) {
     await document.documentElement.requestFullscreen();
   } else if (!value && document.fullscreenElement) {
@@ -72,6 +135,10 @@ export async function setWindowTheme(theme: 'light'|'dark'): Promise<void> {
 
 export function openNotificationSettings(): Promise<void> {
   return invoke('open_notification_settings');
+}
+
+export async function getBatteryStatus(): Promise<BatteryStatus | null> {
+  return isTauri() ? invoke('get_battery_status') : null;
 }
 
 function chooseBrowserFile(): Promise<File | null> {

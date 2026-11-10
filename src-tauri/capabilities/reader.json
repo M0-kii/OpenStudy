@@ -5,7 +5,9 @@
   "permissions": [
     "allow-pick-document",
     "allow-read-document",
+    "allow-read-online-pdf",
     "allow-open-notification-settings",
+    "allow-get-battery-status",
     "allow-set-study-fullscreen",
     "core:window:allow-is-fullscreen",
     "core:window:allow-start-dragging",

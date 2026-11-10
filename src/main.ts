@@ -1,10 +1,11 @@
 import './style.css';
 import './bars.css';
+import { batteryAlertLevel } from './battery';
 import {
-  closeWindow, isWindowMaximized, minimizeWindow, openNotificationSettings, pickDocument, platform,
-  readDocument, setFullscreen, setWindowTheme, startDragging, toggleMaximizeWindow,
+  closeWindow, getBatteryStatus, isWindowMaximized, minimizeWindow, openNotificationSettings, pickDocument, platform,
+  readDocument, readOnlinePdf, setFullscreen, setWindowTheme, startDragging, toggleMaximizeWindow,
 } from './desktop';
-import { loadLibrary, saveLibrary, type SavedDocument } from './library';
+import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type Reader, type ReaderState, type ReadingPosition } from './readers';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
 import { clockLabel, StudyTimer } from './timer';
@@ -41,17 +42,30 @@ const timerSelect = element<HTMLSelectElement>('session-minutes');
 const defaultMinutes = element<HTMLSelectElement>('default-minutes');
 const showCountdown = element<HTMLInputElement>('show-countdown');
 const continuousPdf = element<HTMLInputElement>('continuous-pdf');
+const blockAppSwitching = element<HTMLInputElement>('block-app-switching');
+const batteryAlerts = element<HTMLInputElement>('battery-alerts');
 const readerContinuousPdf = element<HTMLInputElement>('reader-continuous-pdf');
 const pdfPageJump = element<HTMLFormElement>('pdf-page-jump');
 const readerPage = element<HTMLInputElement>('reader-page');
 const readerProgress = element<HTMLInputElement>('reader-progress');
 const recentList = element('recent-list');
 const pickerButtons = ['choose-file', 'choose-file-inline', 'choose-another'].map(button);
+const linkButtons = ['open-link', 'open-link-inline'].map(button);
+const continueButton = button('continue-reading');
+const reconnectButton = button('reconnect-document');
 const selectedDocument = element('selected-document');
 const preview = element('document-preview');
 const noteDialog = element<HTMLDialogElement>('note-dialog');
 const notesDialog = element<HTMLDialogElement>('notes-dialog');
 const optionsDialog = element<HTMLDialogElement>('options-dialog');
+const linkDialog = element<HTMLDialogElement>('link-dialog');
+const linkInput = element<HTMLInputElement>('pdf-link');
+const linkError = element('link-error');
+const contentsPanel = element('reader-contents');
+const findPanel = element('reader-find');
+const findInput = element<HTMLInputElement>('find-query');
+const searchResult = element('search-result');
+const batteryAlert = element('battery-alert');
 const os = platform();
 const windowMenuToggle = button('window-menu-toggle');
 const sidebarToggle = button('sidebar-toggle');
@@ -80,6 +94,12 @@ let queuedPdfPage: number | undefined;
 let saveDelay: ReturnType<typeof setTimeout> | undefined;
 let announced = false;
 let canSave = true;
+let lastDocument: SavedDocument | undefined;
+let missingDocument: SavedDocument | undefined;
+let replacementLink: SavedDocument | undefined;
+let batteryCheckPending = false;
+let batteryLevel = 0;
+let dismissedBatteryLevel = 0;
 
 function showError(node: HTMLElement, message = ''): void {
   node.textContent = message;
@@ -93,8 +113,11 @@ function setScreen(next: Screen): void {
     appMenu.close();
     readerToolbar.close();
     sessionMenu.close();
+    closeReaderPanel(contentsPanel);
+    closeReaderPanel(findPanel);
   }
   screen = next;
+  batteryAlert.hidden = (next !== 'reader' && next !== 'break') || batteryLevel <= dismissedBatteryLevel;
   for (const [name, node] of Object.entries(screens)) {
     node.hidden = name !== next;
     if (name === next && busy) node.setAttribute('aria-busy', 'true');
@@ -117,7 +140,9 @@ function activeSession(): boolean {
 
 function syncControls(): void {
   const canChoose = !busy && !activeSession();
-  for (const picker of pickerButtons) picker.disabled = !canChoose;
+  for (const picker of [...pickerButtons, ...linkButtons]) picker.disabled = !canChoose;
+  continueButton.disabled = !canChoose;
+  reconnectButton.disabled = !canChoose;
   for (const row of recentList.querySelectorAll<HTMLButtonElement>('button')) row.disabled = !canChoose;
   button('nav-library').disabled = busy;
   button('open-settings').disabled = busy;
@@ -147,7 +172,15 @@ function renderLibrary(): void {
   recentList.replaceChildren();
   element('recent-empty').hidden = library.length > 0;
 
-  for (const entry of [...library].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)) {
+  const recent = [...library].sort((a, b) => b.updatedAt - a.updatedAt);
+  lastDocument = recent.find((entry) => entry.position);
+  continueButton.hidden = !lastDocument;
+  if (lastDocument) {
+    element('continue-title').textContent = lastDocument.title;
+    element('continue-location').textContent = lastDocument.label ?? kindLabel(lastDocument.kind);
+  }
+
+  for (const entry of recent.slice(0, 5)) {
     const item = document.createElement('li');
     const row = document.createElement('button');
     row.type = 'button';
@@ -162,11 +195,10 @@ function renderLibrary(): void {
     detail.className = 'recent-meta';
     detail.textContent = entry.label ?? kindLabel(entry.kind);
     row.append(title, detail);
-    row.addEventListener('click', () => void selectDocument(async () => ({
-      path: entry.path,
-      name: entry.name,
-      bytes: await readDocument(entry.path),
-    }), 'This file could not be reopened. Choose it again if it has moved.'));
+    row.addEventListener('click', () => void selectDocument(
+      async () => ({ ...entry, bytes: await readSavedDocument(entry) }),
+      (error) => showReopenError(entry, error),
+    ));
     item.append(row);
     recentList.append(item);
   }
@@ -183,63 +215,103 @@ function clearPreview(): void {
   preview.classList.remove('has-preview');
 }
 
+function showSelection(entry: SavedDocument, bytes?: ArrayBuffer, cover?: Awaited<ReturnType<typeof previewDocument>>): void {
+  selection = { document: entry, bytes };
+  clearPreview();
+  imageUrl = cover?.image;
+  if (imageUrl) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.src = imageUrl;
+    preview.classList.add('has-preview');
+    preview.append(image);
+  }
+  element('selected-name').textContent = entry.title;
+  element('selected-meta').textContent = entry.label ?? cover?.details ?? kindLabel(entry.kind);
+  selectedDocument.hidden = false;
+  button('launcher-review-notes').hidden = entry.notes.length === 0;
+}
+
+function readSavedDocument(entry: SavedDocument): Promise<ArrayBuffer> {
+  return entry.online ? readOnlinePdf(entry.path) : readDocument(entry.path);
+}
+
+function documentError(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : error;
+  if (error instanceof Error && error.name === 'PasswordException') return 'This PDF is password-protected. Choose an unlocked copy.';
+  if (typeof message === 'string' && message.includes('smaller than 256 MB')) return 'Choose a document smaller than 256 MB.';
+  return fallback;
+}
+
+function showReopenError(entry: SavedDocument, error: unknown): void {
+  missingDocument = entry;
+  reconnectButton.textContent = entry.online ? 'Update PDF link' : 'Locate file';
+  reconnectButton.hidden = false;
+  showError(launcherError, documentError(error, entry.online
+    ? 'This PDF link could not be opened. If the link has changed, update it here.'
+    : 'This file could not be reopened. If it moved, locate it to keep your place and notes.'));
+}
+
+type ChosenDocument = NonNullable<Awaited<ReturnType<typeof pickDocument>>> & { online?: true };
+
 async function selectDocument(
-  pick: () => ReturnType<typeof pickDocument>,
-  failure: string,
-): Promise<void> {
-  if (busy || activeSession()) return;
+  pick: () => Promise<ChosenDocument | null>,
+  onError: (error: unknown) => void,
+  replacement?: SavedDocument,
+): Promise<boolean> {
+  if (busy || activeSession()) return false;
   if (screen === 'settings') setScreen('launcher');
   setBusy(true);
-  showError(launcherError);
+  if (!replacement) {
+    missingDocument = undefined;
+    reconnectButton.hidden = true;
+    showError(launcherError);
+  }
+  let opened = false;
   let kind: DocumentKind | undefined;
   try {
     const file = await pick();
-    if (!file) return;
+    if (!file) return false;
     launcherLoading.hidden = false;
     const extension = file.name.split('.').pop()?.toLowerCase();
-    kind = extension === 'md' || extension === 'markdown' ? 'markdown'
+    kind = file.online ? 'pdf' : extension === 'md' || extension === 'markdown' ? 'markdown'
       : extension === 'pdf' || extension === 'epub' ? extension : undefined;
-    if (!kind) {
-      showError(launcherError, 'Choose a PDF, EPUB, or Markdown file.');
-      return;
-    }
+    if (!kind) throw new Error('Choose a PDF, EPUB, or Markdown file.');
+    const source = { path: file.path, name: file.name, kind, online: file.online };
+    const repaired = replacement ? reconnectDocument(library, replacement, source) : undefined;
     const cover = await previewDocument(kind, file.bytes);
     const existing = library.find((entry) => entry.path === file.path);
-    const saved = existing ?? {
-      path: file.path,
-      name: file.name,
+    const saved = repaired?.document ?? existing ?? {
+      ...source,
       title: cover.title || file.name.replace(/\.[^.]+$/, ''),
-      kind,
       updatedAt: 0,
       notes: [],
     };
-    selection = { document: saved, bytes: file.bytes };
-    clearPreview();
-    imageUrl = cover.image;
-    if (imageUrl) {
-      const image = document.createElement('img');
-      image.alt = '';
-      image.src = imageUrl;
-      preview.classList.add('has-preview');
-      preview.append(image);
+    if (repaired) {
+      try {
+        saveLibrary(repaired.library);
+      } catch {
+        if (cover.image) URL.revokeObjectURL(cover.image);
+        throw new Error('OpenStudy could not save the new location. Try again.');
+      }
+      library = repaired.library;
     }
-    element('selected-name').textContent = saved.title;
-    element('selected-meta').textContent = saved.label ?? cover.details;
-    selectedDocument.hidden = false;
-    button('launcher-review-notes').hidden = saved.notes.length === 0;
+    missingDocument = undefined;
+    reconnectButton.hidden = true;
+    showError(launcherError);
+    showSelection(saved, file.bytes, cover);
     renderLibrary();
+    opened = true;
+    return true;
   } catch (error) {
-    console.error(error);
-    const password = error instanceof Error && /password/i.test(`${error.name} ${error.message}`);
-    const detail = error instanceof Error ? error.message : error;
-    const size = typeof detail === 'string' && detail.includes('smaller than 256 MB');
-    showError(launcherError, password ? 'This PDF is password-protected. Choose an unlocked copy.'
-      : size ? 'Choose a document smaller than 256 MB.'
-      : kind === 'markdown' && error instanceof Error ? error.message : failure);
+    if (!replacement && kind === 'markdown' && error instanceof Error) showError(launcherError, error.message);
+    else onError(error);
+    return false;
   } finally {
     launcherLoading.hidden = true;
     setBusy(false);
-    if (selectedDocument.hidden === false && launcherError.hidden) button('start-session').focus();
+    if (opened && !linkDialog.open) button('start-session').focus();
+    else if (!launcherError.hidden && !reconnectButton.hidden && !linkDialog.open) reconnectButton.focus();
   }
 }
 
@@ -319,19 +391,50 @@ function updateClock(): void {
   }
 }
 
-async function startSession(position?: ReadingPosition): Promise<void> {
-  if (screen !== 'launcher' || busy || !selection) return;
+async function checkBattery(): Promise<void> {
+  if (!settings.batteryAlerts || !reader || (screen !== 'reader' && screen !== 'break') || batteryCheckPending) return;
+  const session = reader;
+  batteryCheckPending = true;
+  try {
+    const status = await getBatteryStatus();
+    if (reader !== session || !settings.batteryAlerts) return;
+    batteryLevel = batteryAlertLevel(status);
+    if (!batteryLevel) dismissedBatteryLevel = 0;
+    const visible = batteryLevel > dismissedBatteryLevel && (screen === 'reader' || screen === 'break');
+    if (visible && status) {
+      const message = batteryLevel === 2
+        ? `Battery at ${status.percent}%. Plug in now to keep reading.`
+        : `Battery at ${status.percent}%. Plug in when you can.`;
+      if (element('battery-message').textContent !== message) element('battery-message').textContent = message;
+    }
+    batteryAlert.hidden = !visible;
+  } catch {
+    // A failed probe should not interrupt reading.
+  } finally {
+    batteryCheckPending = false;
+  }
+}
+
+async function startSession(entry = selection?.document, position = entry?.position, minutes = Number(timerSelect.value)): Promise<void> {
+  if (screen !== 'launcher' || busy || !entry) return;
   setBusy(true);
   showError(readerError);
-  const entry = selection.document;
+  let openingDocument = false;
   try {
+    let bytes = selection?.document === entry ? selection.bytes : undefined;
+    if (!bytes && entry.online && os !== 'browser') {
+      showError(launcherError);
+      launcherLoading.hidden = false;
+      openingDocument = true;
+      bytes = await readSavedDocument(entry);
+      openingDocument = false;
+    }
     element('reader-title').textContent = entry.title;
     element('break-title').textContent = entry.title;
     pdfPageJump.hidden = true;
     element('reader-location').hidden = false;
     element('reader-location').textContent = '';
     element('reader-location-status').textContent = '';
-    element('pdf-search-form').hidden = entry.kind !== 'pdf';
     element('epub-options').hidden = entry.kind !== 'epub';
     element('pdf-reading-options').hidden = entry.kind !== 'pdf';
     readerContinuousPdf.checked = settings.pdfContinuous;
@@ -342,31 +445,39 @@ async function startSession(position?: ReadingPosition): Promise<void> {
       button(id).setAttribute('aria-label', label);
       button(id).title = label;
     }
-    element<HTMLInputElement>('pdf-search').value = '';
-    showError(element('search-result'));
+    findInput.value = '';
+    showError(searchResult);
+    element('contents-list').replaceChildren();
     reading = undefined;
+    missingDocument = undefined;
+    reconnectButton.hidden = true;
+    batteryLevel = dismissedBatteryLevel = 0;
     setScreen('reader');
-    await setFullscreen(true);
-    const bytes = selection.bytes ?? await readDocument(entry.path);
-    reader = await openReader(viewport, entry.kind, bytes, position ?? entry.position, updateReading, undefined, settings.pdfContinuous);
-    selection.bytes = undefined;
-    const minutes = Number(timerSelect.value);
+    await setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
+    openingDocument = true;
+    bytes ??= await readSavedDocument(entry);
+    reader = await openReader(viewport, entry.kind, bytes, position, updateReading, undefined, settings.pdfContinuous);
+    if (selection?.document === entry) selection.bytes = undefined;
+    else showSelection(entry);
     timer = minutes > 0 ? new StudyTimer(minutes) : undefined;
     announced = false;
     timer?.resume(performance.now());
     updateClock();
     persist();
+    void checkBattery();
     viewport.focus();
   } catch (error) {
-    console.error(error);
     reader?.destroy();
     reader = undefined;
     viewport.replaceChildren();
     await setFullscreen(false).catch(console.error);
     setScreen('launcher');
-    showError(launcherError, 'The reader could not start. Try another file or reopen this one.');
+    if (openingDocument && library.includes(entry)) showReopenError(entry, error);
+    else showError(launcherError, documentError(error, 'The reader could not start. Try opening the document again.'));
   } finally {
+    launcherLoading.hidden = true;
     setBusy(false);
+    if (screen === 'launcher' && missingDocument) reconnectButton.focus();
   }
 }
 
@@ -375,11 +486,13 @@ async function takeBreak(): Promise<void> {
   setBusy(true);
   showError(breakError);
   timer?.pause(performance.now());
-  persist();
+  const saved = persist();
   try {
     await setFullscreen(false);
     setScreen('break');
+    if (!saved) showError(breakError, 'OpenStudy could not save your reading progress.');
     updateClock();
+    void checkBattery();
   } catch (error) {
     console.error(error);
     timer?.resume(performance.now());
@@ -395,11 +508,12 @@ async function resumeSession(): Promise<boolean> {
   setBusy(true);
   showError(breakError);
   try {
-    await setFullscreen(true);
+    await setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     setScreen('reader');
     await reader?.setPdfContinuous?.(settings.pdfContinuous);
     timer?.resume(performance.now());
     updateClock();
+    void checkBattery();
     viewport.focus();
     return true;
   } catch (error) {
@@ -480,7 +594,7 @@ function showNotes(): void {
     jump.addEventListener('click', async () => {
       notesDialog.close();
       if (screen === 'launcher') {
-        await startSession(note.position);
+        await startSession(selection?.document, note.position);
         return;
       }
       if (screen === 'break' && !await resumeSession()) return;
@@ -516,6 +630,10 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     applyAppearance();
     continuousPdf.checked = settings.pdfContinuous;
     readerContinuousPdf.checked = settings.pdfContinuous;
+    if (!settings.batteryAlerts) {
+      batteryLevel = dismissedBatteryLevel = 0;
+      batteryAlert.hidden = true;
+    }
     updateClock();
     return true;
   } catch (error) {
@@ -525,6 +643,8 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     themeSelect.value = settings.theme;
     continuousPdf.checked = settings.pdfContinuous;
     readerContinuousPdf.checked = settings.pdfContinuous;
+    blockAppSwitching.checked = settings.blockAppSwitching;
+    batteryAlerts.checked = settings.batteryAlerts;
     showError(errorNode, 'OpenStudy could not save your settings. Try again.');
     return false;
   }
@@ -579,9 +699,65 @@ function returnFromSettings(): void {
 for (const picker of pickerButtons) {
   picker.addEventListener('click', () => void selectDocument(
     pickDocument,
-    'OpenStudy could not open that file. Choose a readable PDF, EPUB, or Markdown file.',
+    (error) => showError(launcherError, documentError(error, 'Choose a readable PDF, EPUB, or Markdown file.')),
   ));
 }
+
+function showLinkDialog(replacement?: SavedDocument): void {
+  if (busy || activeSession()) return;
+  if (screen === 'settings') setScreen('launcher');
+  replacementLink = replacement;
+  element('link-heading').textContent = replacement ? 'Update PDF link' : 'Open PDF link';
+  linkInput.value = replacement?.path ?? '';
+  showError(linkError);
+  linkDialog.showModal();
+  linkInput.select();
+}
+
+for (const trigger of linkButtons) trigger.addEventListener('click', () => showLinkDialog());
+reconnectButton.addEventListener('click', () => {
+  if (!missingDocument) return;
+  if (missingDocument.online) showLinkDialog(missingDocument);
+  else void selectDocument(pickDocument, (error) => showError(launcherError, documentError(error,
+    error instanceof Error && !/password/i.test(error.name) ? error.message : 'Choose the original file.')), missingDocument);
+});
+button('cancel-link').addEventListener('click', () => linkDialog.close());
+linkDialog.addEventListener('cancel', (event) => {
+  if (busy) event.preventDefault();
+});
+element('link-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  if (busy) return;
+  let url: URL;
+  try {
+    url = new URL(linkInput.value.trim());
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error();
+  } catch {
+    showError(linkError, 'Enter an HTTP or HTTPS PDF link without a username or password.');
+    return;
+  }
+  url.hash = '';
+  const segment = url.pathname.split('/').filter(Boolean).pop() ?? url.hostname;
+  let name = segment;
+  try { name = decodeURIComponent(segment); } catch { /* Keep a malformed escape readable. */ }
+  showError(linkError);
+  const cancel = button('cancel-link');
+  const submit = button('submit-link');
+  linkInput.readOnly = cancel.disabled = submit.disabled = true;
+  showError(element('link-status'), 'Opening PDF…');
+  const opened = await selectDocument(async () => ({
+    path: url.href, name, online: true, bytes: await readOnlinePdf(url.href),
+  }), (error) => showError(linkError, documentError(error, 'Could not open this PDF link. Check that it opens a PDF directly.')), replacementLink);
+  linkInput.readOnly = cancel.disabled = submit.disabled = false;
+  showError(element('link-status'));
+  if (opened) {
+    linkDialog.close();
+    button('start-session').focus();
+  } else linkInput.focus();
+});
+continueButton.addEventListener('click', () => {
+  if (lastDocument) void startSession(lastDocument, lastDocument.position, settings.defaultMinutes);
+});
 button('start-session').addEventListener('click', () => void startSession());
 button('resume-session').addEventListener('click', () => void resumeSession());
 button('take-break').addEventListener('click', () => void takeBreak());
@@ -589,6 +765,11 @@ button('end-session').addEventListener('click', () => void endSession());
 button('end-from-break').addEventListener('click', () => void endSession());
 button('previous-page').addEventListener('click', () => void readerAction((active) => active.previous()));
 button('next-page').addEventListener('click', () => void readerAction((active) => active.next()));
+button('dismiss-battery').addEventListener('click', () => {
+  dismissedBatteryLevel = batteryLevel;
+  batteryAlert.hidden = true;
+  element(screen === 'break' ? 'resume-session' : 'reader-viewport').focus();
+});
 async function jumpToPdfPage(page: number): Promise<void> {
   const position = reading?.position;
   if (screen !== 'reader' || busy || position?.kind !== 'pdf' || !Number.isInteger(page)
@@ -647,20 +828,91 @@ element<HTMLSelectElement>('reading-width').addEventListener('change', (event) =
   const width = Number((event.target as HTMLSelectElement).value);
   void readerAction((active) => active.setEpubLayout({ width }));
 });
-element('pdf-search-form').addEventListener('submit', (event) => {
+function closeReaderPanel(panel: HTMLElement, focus = false): void {
+  if (!panel.hidden && panel === findPanel) reader?.clearFind?.();
+  panel.hidden = true;
+  const toggle = button(panel === contentsPanel ? 'toggle-contents' : 'toggle-find');
+  toggle.setAttribute('aria-expanded', 'false');
+  if (focus) (toggle.closest('[inert]') ? viewport : toggle).focus();
+}
+
+async function openContents(): Promise<void> {
+  if (!reader || busy) return;
+  const active = reader;
+  closeReaderPanel(findPanel);
+  contentsPanel.hidden = false;
+  button('toggle-contents').setAttribute('aria-expanded', 'true');
+  button('close-contents').focus();
+  const list = element('contents-list');
+  const status = element('contents-status');
+  list.replaceChildren();
+  showError(status, 'Loading contents…');
+  try {
+    const entries = await active.contents?.() ?? [];
+    if (reader !== active || contentsPanel.hidden) return;
+    showError(status, entries.length ? '' : 'No table of contents.');
+    list.replaceChildren(...entries.map((entry) => {
+      const item = document.createElement('li');
+      const jump = document.createElement('button');
+      jump.type = 'button';
+      jump.className = 'quiet-button';
+      jump.dir = 'auto';
+      jump.textContent = entry.label;
+      item.style.setProperty('--contents-depth', String(Math.min(6, Math.max(0, entry.depth))));
+      jump.addEventListener('click', () => void readerAction(async () => {
+        await entry.goTo();
+        closeReaderPanel(contentsPanel);
+        viewport.focus();
+      }));
+      item.append(jump);
+      return item;
+    }));
+  } catch {
+    if (reader === active) showError(status, 'Could not load contents.');
+  }
+}
+
+function openFind(): void {
+  if (!reader || busy || !reader.find) return;
+  closeReaderPanel(contentsPanel);
+  findPanel.hidden = false;
+  button('toggle-find').setAttribute('aria-expanded', 'true');
+  findInput.focus();
+  findInput.select();
+}
+
+button('toggle-contents').addEventListener('click', () => {
+  if (contentsPanel.hidden) void openContents();
+  else closeReaderPanel(contentsPanel, true);
+});
+button('toggle-find').addEventListener('click', () => {
+  if (findPanel.hidden) openFind();
+  else closeReaderPanel(findPanel, true);
+});
+button('close-contents').addEventListener('click', () => closeReaderPanel(contentsPanel, true));
+button('close-find').addEventListener('click', () => closeReaderPanel(findPanel, true));
+findInput.addEventListener('input', () => showError(searchResult));
+findInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing) return;
   event.preventDefault();
-  const query = element<HTMLInputElement>('pdf-search').value.trim();
+  button(event.shiftKey ? 'find-previous' : 'find-next').click();
+});
+findPanel.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const query = findInput.value.trim();
   if (!query) return;
-  const result = element('search-result');
-  showError(result, 'Searching…');
+  const direction = (event as SubmitEvent).submitter === button('find-previous') ? 'previous' : 'next';
   void readerAction(async (active) => {
-    if (!await active.find?.(query)) {
-      showError(result, 'No matching text found.');
-      return;
+    showError(searchResult, 'Searching…');
+    try {
+      const found = await active.find?.(query, direction);
+      if (findInput.value.trim() !== query) return;
+      showError(searchResult, found
+        ? reading?.position.kind === 'pdf' ? reading.label : 'Match found.'
+        : 'No matching text found.');
+    } catch {
+      showError(searchResult, 'Could not search this document.');
     }
-    showError(result);
-    optionsDialog.close();
-    viewport.focus();
   });
 });
 
@@ -668,6 +920,7 @@ const noteText = element<HTMLTextAreaElement>('note-text');
 button('add-note').addEventListener('click', () => {
   if (!reading || !reader || busy || readerBusy) return;
   noteText.value = '';
+  showError(element('note-save-error'));
   noteDialog.showModal();
   noteText.focus();
 });
@@ -675,8 +928,14 @@ element('note-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const text = noteText.value.trim();
   if (!selection || !reading || !text) return;
-  selection.document.notes.push({ text, position: { ...reading.position }, label: reading.label });
-  persist();
+  const notes = selection.document.notes;
+  notes.push({ text, position: { ...reading.position }, label: reading.label });
+  if (!persist()) {
+    notes.pop();
+    showError(element('note-save-error'), 'Could not save your note. Your draft is still here.');
+    return;
+  }
+  showError(readerError);
   noteDialog.close();
 });
 button('cancel-note').addEventListener('click', () => noteDialog.close());
@@ -688,13 +947,18 @@ button('close-notes').addEventListener('click', () => notesDialog.close());
 const notificationsDescription = element('notifications-description');
 const osSettingsButton = button('open-os-settings');
 notificationsDescription.textContent = notificationCopy();
+element('launcher-notifications').textContent = notificationCopy();
 osSettingsButton.hidden = os !== 'windows';
+button('launcher-os-settings').hidden = os !== 'windows';
+element('windows-focus-setting').hidden = os !== 'windows';
 defaultMinutes.value = String(settings.defaultMinutes);
 timerSelect.value = String(settings.defaultMinutes);
 showCountdown.checked = settings.showCountdown;
 themeSelect.value = settings.theme;
 continuousPdf.checked = settings.pdfContinuous;
 readerContinuousPdf.checked = settings.pdfContinuous;
+blockAppSwitching.checked = settings.blockAppSwitching;
+batteryAlerts.checked = settings.batteryAlerts;
 defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
 showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
 themeSelect.addEventListener('change', () => changeSettings({
@@ -702,6 +966,8 @@ themeSelect.addEventListener('change', () => changeSettings({
   theme: themeSelect.value === 'light' ? 'light' : 'dark',
 }));
 continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
+blockAppSwitching.addEventListener('change', () => changeSettings({ ...settings, blockAppSwitching: blockAppSwitching.checked }));
+batteryAlerts.addEventListener('change', () => changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked }));
 sidebarToggle.addEventListener('click', () => {
   const errorNode = screen === 'settings' ? settingsError : screen === 'break' ? breakError : launcherError;
   changeSettings({ ...settings, sidebarCollapsed: !settings.sidebarCollapsed }, errorNode);
@@ -719,15 +985,16 @@ button('nav-library').addEventListener('click', () => {
   setScreen(target);
   element(target === 'break' ? 'resume-session' : 'workspace-title').focus();
 });
-osSettingsButton.addEventListener('click', async () => {
-  showError(settingsError);
-  try {
-    await openNotificationSettings();
-  } catch (error) {
-    console.error(error);
-    if (screen === 'settings') showError(settingsError, 'Could not open Windows Settings. Open it manually to change notifications.');
-  }
-});
+for (const [trigger, errorNode] of [[osSettingsButton, settingsError], [button('launcher-os-settings'), launcherError]] as const) {
+  trigger.addEventListener('click', async () => {
+    showError(errorNode);
+    try {
+      await openNotificationSettings();
+    } catch {
+      showError(errorNode, 'Could not open Windows Settings. Open it manually to change notifications.');
+    }
+  });
+}
 
 for (const command of windowCommands) {
   command.addEventListener('click', () => {
@@ -797,7 +1064,7 @@ function showInteractionError(message: string): void {
 
 function contextCommands({ source, target }: ContextTarget): ContextCommand[] {
   const commands: ContextCommand[] = [];
-  const field = target?.closest<HTMLInputElement | HTMLTextAreaElement>('textarea, input[type="search"], input[type="text"]');
+  const field = target?.closest<HTMLInputElement | HTMLTextAreaElement>('textarea, input[type="search"], input[type="text"], input[type="url"]');
   const fieldValue = field?.value;
   const start = field?.selectionStart ?? 0;
   const end = field?.selectionEnd ?? start;
@@ -824,9 +1091,9 @@ function contextCommands({ source, target }: ContextTarget): ContextCommand[] {
   if (document.querySelector('dialog[open]')) return commands;
 
   const targets = screen === 'reader'
-    ? ['previous-page', 'next-page', 'reader-options', 'add-note', 'review-notes', 'take-break']
+    ? ['previous-page', 'next-page', 'toggle-contents', 'toggle-find', 'reader-options', 'add-note', 'review-notes', 'take-break']
     : screen === 'break' ? ['resume-session', 'break-review-notes', 'end-from-break']
-    : ['choose-file', 'nav-library', 'open-settings'];
+    : ['choose-file', 'open-link', 'nav-library', 'open-settings'];
   for (const id of targets) {
     const action = button(id);
     if (action.disabled || action.hidden || (screen === 'settings' && id === 'open-settings')) continue;
@@ -839,7 +1106,18 @@ function contextCommands({ source, target }: ContextTarget): ContextCommand[] {
 bindContextMenu(element('context-menu'), contextCommands);
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+  if (screen === 'reader' && event.key.toLowerCase() === 'f' && (event.ctrlKey || event.metaKey) && !event.altKey) {
+    event.preventDefault();
+    openFind();
+    return;
+  }
   if (event.key === 'Escape') {
+    const panel = [findPanel, contentsPanel].find((candidate) => !candidate.hidden);
+    if (panel) {
+      event.preventDefault();
+      closeReaderPanel(panel, true);
+      return;
+    }
     for (const [menu, toggle] of [[appMenu, windowMenuToggle], [sessionMenu, sessionToggle], [readerToolbar, toolbarToggle]] as const) {
       if (!menu.isPinned()) continue;
       event.preventDefault();
@@ -878,6 +1156,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) persist();
 });
 setInterval(updateClock, 250);
+setInterval(() => void checkBattery(), 30_000);
 
 applySidebarLayout();
 applyAppearance();

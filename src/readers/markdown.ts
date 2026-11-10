@@ -1,6 +1,8 @@
 import MarkdownIt from 'markdown-it';
 import './markdown.css';
-import { bounded, type DocumentPreview, type MarkdownPosition, type Reader, type ReaderState } from './index';
+import './readers.css';
+import { findPattern, findText, highlightMatch, indexText, matchRange, type TextMatch } from './find';
+import { bounded, type DocumentPreview, type FindDirection, type MarkdownPosition, type Reader, type ReaderState } from './index';
 
 const markdown = new MarkdownIt({ html: false, linkify: false });
 type Token = ReturnType<typeof markdown.parse>[number];
@@ -91,8 +93,12 @@ export function openMarkdown(
   article.setAttribute('aria-label', title ?? 'Markdown document');
   article.innerHTML = markdown.renderer.render(tokens, markdown.options, {});
   const headings = Array.from(article.querySelectorAll<HTMLElement>('[id^="markdown-section-"]'));
+  const firstLevel = Math.min(...headings.map((heading) => Number(heading.tagName[1])));
   let zoom = 1;
   let closed = false;
+  let search: { query: string; match: TextMatch } | undefined;
+  let unhighlight: (() => void) | undefined;
+  let indexed: ReturnType<typeof indexText> | undefined;
   host.replaceChildren(article);
 
   function scrollRange(): number {
@@ -141,15 +147,43 @@ export function openMarkdown(
     notify();
   }
 
+  function goToHeading(heading: HTMLElement) {
+    if (closed) return;
+    host.scrollTop = article.offsetTop + heading.offsetTop - 18;
+    heading.focus({ preventScroll: true });
+    notify();
+  }
+
   function jump(event: MouseEvent) {
     const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null;
     if (!anchor) return;
     event.preventDefault();
     const heading = article.querySelector<HTMLElement>(anchor.hash);
-    if (!heading) return;
-    host.scrollTop = article.offsetTop + heading.offsetTop - 18;
-    heading.focus({ preventScroll: true });
+    if (heading) goToHeading(heading);
+  }
+
+  function clearFind() {
+    search = undefined;
+    unhighlight?.();
+    unhighlight = undefined;
+  }
+
+  async function find(query: string, direction: FindDirection = 'next') {
+    const pattern = findPattern(query);
+    if (!pattern || closed) return false;
+    indexed ??= indexText(article);
+    const previous = search?.query === pattern.source ? search.match : undefined;
+    const from = previous && previous.index + (direction === 'next' ? previous.length : 0);
+    const match = findText(indexed.text, pattern, direction, from) ?? findText(indexed.text, pattern, direction);
+    const range = match && matchRange(indexed, match);
+    clearFind();
+    if (!match || !range) return false;
+    search = { query: pattern.source, match };
+    const top = range.getBoundingClientRect().top - host.getBoundingClientRect().top - host.clientHeight / 4;
+    host.scrollTop += top;
+    unhighlight = highlightMatch(range, article);
     notify();
+    return true;
   }
 
   function destroy() {
@@ -158,6 +192,7 @@ export function openMarkdown(
     article.removeEventListener('click', jump);
     host.removeEventListener('scroll', notify);
     signal?.removeEventListener('abort', destroy);
+    clearFind();
     article.remove();
   }
 
@@ -175,6 +210,12 @@ export function openMarkdown(
     zoom: async (delta) => place(scrollFraction(), Math.round((zoom + delta * 0.1) * 100) / 100),
     fit: async () => place(scrollFraction(), 1),
     setEpubLayout: async () => {},
+    contents: async () => closed ? [] : headings.flatMap((heading) => {
+      const label = heading.textContent?.trim();
+      return label ? [{ label, depth: Number(heading.tagName[1]) - firstLevel, goTo: async () => goToHeading(heading) }] : [];
+    }),
+    find,
+    clearFind,
     destroy,
   };
 }

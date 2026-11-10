@@ -10,6 +10,8 @@ use std::{
 use tauri::{ipc::Response, AppHandle, Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+mod battery;
+mod online_pdf;
 #[cfg(windows)]
 mod switch_guard;
 
@@ -138,16 +140,24 @@ fn open_notification_settings() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_study_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<(), String> {
+fn set_study_fullscreen(
+    window: WebviewWindow,
+    fullscreen: bool,
+    block_app_switching: Option<bool>,
+) -> Result<(), String> {
+    #[cfg(not(windows))]
+    let _ = block_app_switching;
     #[cfg(windows)]
-    if !fullscreen {
+    let block_app_switching = block_app_switching.unwrap_or(false);
+    #[cfg(windows)]
+    if !fullscreen || !block_app_switching {
         switch_guard::disable();
     }
     window
         .set_fullscreen(fullscreen)
         .map_err(|error| error.to_string())?;
     #[cfg(windows)]
-    if fullscreen {
+    if fullscreen && block_app_switching {
         if let Ok(hwnd) = window.hwnd() {
             switch_guard::enable(hwnd.0);
         }
@@ -196,7 +206,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             pick_document,
             read_document,
+            online_pdf::read_online_pdf,
             open_notification_settings,
+            battery::get_battery_status,
             set_study_fullscreen
         ])
         .run(tauri::generate_context!())

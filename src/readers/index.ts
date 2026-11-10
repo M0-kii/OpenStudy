@@ -34,6 +34,14 @@ export interface ReaderState {
   canNext: boolean;
 }
 
+export type FindDirection = 'next' | 'previous';
+
+export interface ReaderContentsEntry {
+  label: string;
+  depth: number;
+  goTo(): Promise<void>;
+}
+
 export interface Reader {
   previous(): Promise<void>;
   next(): Promise<void>;
@@ -42,7 +50,9 @@ export interface Reader {
   fit(): Promise<void>;
   setEpubLayout(layout: Partial<EpubLayout>): Promise<void>;
   setPdfContinuous?(enabled: boolean): Promise<void>;
-  find?(query: string): Promise<boolean>;
+  contents?(): Promise<readonly ReaderContentsEntry[]>;
+  find?(query: string, direction?: FindDirection): Promise<boolean>;
+  clearFind?(): void;
   destroy(): void;
 }
 

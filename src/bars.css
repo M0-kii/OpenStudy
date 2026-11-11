@@ -55,10 +55,7 @@
   min-height: 54px;
   grid-template-columns: minmax(0, 1fr) minmax(0, 36ch) minmax(max-content, 1fr);
   gap: 6px 14px;
-  margin-inline: 16px;
-  padding: 6px 10px;
-  border: 1px solid var(--edge);
-  border-radius: 8px;
+  padding: 6px 16px;
 }
 .reader-toolbar .reader-controls { justify-content: flex-end; gap: 5px; }
 .reader-toolbar .control-group { padding-inline-start: 5px; border-inline-start: 1px solid var(--line); }
@@ -94,12 +91,10 @@
 #reader-progress:disabled { cursor: default; }
 .reader-entry-hint {
   position: absolute;
-  inset: calc(100% + 6px) auto auto 50%;
+  inset: 100% auto auto 50%;
   display: none;
   transform: translateX(-50%);
   padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
   background: var(--surface);
   color: var(--muted);
   font-size: .82rem;
@@ -116,19 +111,15 @@
   display: flex;
   height: 42px;
   align-items: center;
-  border: 1px solid var(--edge);
-  border-radius: 7px;
-  background: var(--surface);
+  gap: 8px;
   pointer-events: auto;
 }
 .reader-session-trigger .reader-edge-button {
   display: grid;
   width: 64px;
-  height: 40px;
+  height: 42px;
   min-height: 0;
   place-items: center;
-  border: 0;
-  border-radius: 6px;
 }
 .reader-session-trigger .reader-edge-button > * { grid-area: 1 / 1; }
 .reader-session-label { visibility: hidden; font-size: .82rem; }
@@ -140,10 +131,7 @@
 .reader-session-trigger .reader-edge-button[aria-expanded='true'] .icon { visibility: hidden; }
 .reader-session-trigger .reader-edge-button[aria-expanded='true'] { background: var(--hover); }
 .reader-session-trigger .session-clock {
-  padding: 0 9px 0 10px;
-  border-inline-end: 1px solid var(--line);
-  border-radius: 0;
-  background: transparent;
+  background: var(--surface);
 }
 .reader-session-card { min-width: 166px; padding-bottom: 8px; }
 .session-card-inner .quiet-button { min-height: 35px; color: var(--text); }
@@ -173,5 +161,5 @@
   #reader-page, #reader-progress { min-height: 44px; }
   .reader-edge-button, .reader-session-trigger { height: 44px; }
   .reader-edge-button { width: 44px; }
-  .reader-session-trigger .reader-edge-button { height: 42px; }
+  .reader-session-trigger .reader-edge-button { height: 44px; }
 }

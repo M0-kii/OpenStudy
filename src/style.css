@@ -40,7 +40,8 @@ html:root[data-theme='light'] :is(.window-brand, .reader-file) img { filter: inv
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { min-width: 320px; margin: 0; }
-h1, h2, h3, p { margin: 0; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
 button, input, select, textarea { color: inherit; font: inherit; }
 button, select { cursor: pointer; }
 button:disabled { opacity: .45; cursor: default; }
@@ -54,6 +55,19 @@ button:disabled { opacity: .45; cursor: default; }
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.skip-link {
+  position: absolute;
+  z-index: 20;
+  inset: 6px auto auto 6px;
+  padding: 8px 12px;
+  border-radius: 5px;
+  background: var(--text);
+  color: var(--base);
+  font-weight: 600;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.skip-link:focus { clip-path: none; }
 
 .icon {
   width: 18px;
@@ -615,8 +629,13 @@ textarea { display: block; margin-top: 5px; resize: vertical; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .reader-toolbar, .reader-session-card { transition: opacity 90ms ease-out; }
-  .window-menu-toggle, .reader-top-edge > span, .button-primary, .reader-edge-button { transition: background-color 90ms ease-out; }
+  .reader-toolbar, .reader-session-card { transition: opacity 120ms ease-out; }
+  .button, .quiet-button, .icon-button, .sidebar-button, .recent-item, .settings-tab, #contents-list button {
+    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+  }
+  .window-menu-toggle, .reader-top-edge > span, .button-primary, .reader-edge-button {
+    transition: background-color 140ms ease-out, border-color 140ms ease-out;
+  }
 }
 
 @media (forced-colors: active) {

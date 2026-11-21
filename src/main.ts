@@ -6,6 +6,7 @@ import { batteryAlertLevel } from './battery';
 import { desktop, platform, type DocumentSelection } from './desktop';
 import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
+import { FindLifecycle } from './readers/find-lifecycle.ts';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
 import { applySettings, type SettingsControls } from './settings-view.ts';
 import { clockLabel, StudyTimer } from './timer';
@@ -105,7 +106,6 @@ let settings = loadSettings();
 let busy = false;
 let readerBusy = false;
 let queuedPdfPage: number | undefined;
-let queuedFind: { query: string; direction: FindDirection } | undefined;
 let saveDelay: ReturnType<typeof setTimeout> | undefined;
 let announced = false;
 let canSave = true;
@@ -702,11 +702,7 @@ async function readerAction(action: (active: Reader) => Promise<unknown>): Promi
       queuedPdfPage = undefined;
       void jumpToPdfPage(page);
     }
-    if (queuedFind) {
-      const { query, direction } = queuedFind;
-      queuedFind = undefined;
-      findDocument(query, direction);
-    }
+    findLife.runQueued();
   }
 }
 
@@ -970,7 +966,7 @@ element<HTMLSelectElement>('reading-width').addEventListener('change', (event) =
 });
 function closeReaderPanel(panel: HTMLElement, focus = false): void {
   if (!panel.hidden && panel === findPanel) {
-    queuedFind = undefined;
+    findLife.clear();
     reader?.clearFind?.();
   }
   panel.hidden = true;
@@ -1077,7 +1073,7 @@ button('toggle-find').addEventListener('click', () => {
 button('close-contents').addEventListener('click', () => closeReaderPanel(contentsPanel, true));
 button('close-find').addEventListener('click', () => closeReaderPanel(findPanel, true));
 findInput.addEventListener('input', () => {
-  queuedFind = undefined;
+  findLife.clear();
   reader?.clearFind?.();
   showError(searchResult);
 });
@@ -1092,29 +1088,22 @@ findPanel.addEventListener('submit', (event) => {
   findDocument(findInput.value.trim(), direction);
 });
 
+const findLife = new FindLifecycle({
+  query: () => findInput.value.trim(),
+  hidden: () => findPanel.hidden,
+  message: (text) => showError(searchResult, text),
+  busy: () => readerBusy || busy,
+  search: async (query, direction, onProgress) => {
+    let result: FindResult | undefined;
+    await readerAction(async (active) => {
+      result = await active.find?.(query, direction, onProgress);
+    });
+    return result;
+  },
+});
+
 function findDocument(query: string, direction: FindDirection): void {
-  if (!query || findPanel.hidden || findInput.value.trim() !== query) return;
-  if (readerBusy) {
-    queuedFind = { query, direction };
-    return;
-  }
-  void readerAction(async (active) => {
-    showError(searchResult, 'Searching…');
-    try {
-      const report = (result: FindResult) => {
-        if (findPanel.hidden || findInput.value.trim() !== query) return;
-        if (!result.found && result.complete) showError(searchResult, 'No matches');
-        else if (result.complete) showError(searchResult, result.index === undefined
-          ? `${result.count} matches` : `${result.index} of ${result.count}`);
-        else if (result.counting) showError(searchResult, `${result.count} found. Counting…`);
-        else showError(searchResult, `${result.count} found in readable text`);
-      };
-      const result = await active.find?.(query, direction, report);
-      if (result) report(result);
-    } catch {
-      if (!findPanel.hidden && findInput.value.trim() === query) showError(searchResult, 'Search failed');
-    }
-  });
+  void findLife.run(query, direction);
 }
 
 const noteText = element<HTMLTextAreaElement>('note-text');

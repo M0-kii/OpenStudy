@@ -3,10 +3,7 @@ import './style.css';
 import './bars.css';
 import { playLowBatteryChime, primeAlarm } from './alarm';
 import { batteryAlertLevel } from './battery';
-import {
-  closeWindow, getBatteryStatus, isWindowMaximized, minimizeWindow, openNotificationSettings, pickDocument, platform,
-  readDocument, readOnlinePdf, setFullscreen, setWindowTheme, startDragging, toggleMaximizeWindow,
-} from './desktop';
+import { desktop, platform, type DocumentSelection } from './desktop';
 import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
@@ -287,7 +284,7 @@ function finishOnlineRequest(request: AbortController | undefined): void {
 }
 
 function readSavedDocument(entry: SavedDocument, signal?: AbortSignal): Promise<ArrayBuffer> {
-  return entry.online ? readOnlinePdf(entry.path, signal) : readDocument(entry.path);
+  return entry.online ? desktop.readOnlinePdf(entry.path, signal) : desktop.readDocument(entry.path);
 }
 
 function documentError(error: unknown, fallback: string): string {
@@ -308,7 +305,7 @@ function showReopenError(entry: SavedDocument, error: unknown, retry?: () => voi
     : 'This file could not be reopened. If it moved, locate it to keep your place and notes.'));
 }
 
-type ChosenDocument = NonNullable<Awaited<ReturnType<typeof pickDocument>>> & { online?: true };
+type ChosenDocument = DocumentSelection & { online?: true };
 
 async function selectDocument(
   pick: (signal?: AbortSignal) => Promise<ChosenDocument | null>,
@@ -482,7 +479,7 @@ async function checkBattery(): Promise<void> {
   const session = reader;
   batteryCheckPending = true;
   try {
-    const status = await getBatteryStatus();
+    const status = await desktop.getBatteryStatus();
     if (reader !== session || !settings.batteryAlerts) return;
     batteryLevel = batteryAlertLevel(status);
     if (!batteryLevel) dismissedBatteryLevel = alarmedBatteryLevel = 0;
@@ -572,7 +569,7 @@ async function startSession(entry = selection?.document, position = entry?.posit
     retryOnlineButton.hidden = reconnectButton.hidden = true;
     batteryLevel = dismissedBatteryLevel = alarmedBatteryLevel = 0;
     setScreen('reader');
-    await setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
+    await desktop.setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     openingDocument = true;
     bytes ??= await readSavedDocument(entry);
     reader = await openReader(viewport, entry.kind, bytes, position, updateReading, undefined, settings.pdfContinuous);
@@ -590,7 +587,7 @@ async function startSession(entry = selection?.document, position = entry?.posit
     reader?.destroy();
     reader = undefined;
     viewport.replaceChildren();
-    await setFullscreen(false).catch(console.error);
+    await desktop.setFullscreen(false).catch(console.error);
     setScreen('launcher');
     if (request?.signal.aborted) return;
     if (openingDocument && library.includes(entry)) showReopenError(entry, error, retry);
@@ -614,7 +611,7 @@ async function takeBreak(): Promise<void> {
   timer?.pause(performance.now());
   const saved = persist();
   try {
-    await setFullscreen(false);
+    await desktop.setFullscreen(false);
     reopenContents = contentsPinned && !contentsPanel.hidden;
     setScreen('break');
     if (!saved) showError(breakError, 'OpenStudy could not save your reading progress.');
@@ -636,7 +633,7 @@ async function resumeSession(): Promise<boolean> {
   setBusy(true);
   showError(breakError);
   try {
-    await setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
+    await desktop.setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     setScreen('reader');
     await reader?.setPdfContinuous?.(settings.pdfContinuous);
     timer?.resume(performance.now());
@@ -646,7 +643,7 @@ async function resumeSession(): Promise<boolean> {
     return true;
   } catch (error) {
     console.error(error);
-    await setFullscreen(false).catch(console.error);
+    await desktop.setFullscreen(false).catch(console.error);
     setScreen('break');
     showError(breakError, 'Could not enter fullscreen. Try resuming again.');
     return false;
@@ -663,7 +660,7 @@ async function endSession(): Promise<void> {
   if ((screen !== 'reader' && screen !== 'break') || busy || readerBusy) return;
   setBusy(true);
   try {
-    if (screen === 'reader') await setFullscreen(false);
+    if (screen === 'reader') await desktop.setFullscreen(false);
     const saved = persist();
     reader?.destroy();
     reader = undefined;
@@ -783,7 +780,7 @@ function applyAppearance(theme = settings.theme): void {
   if (document.documentElement.dataset.theme === theme) return;
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#fafafa' : '#0a0a0a');
-  void setWindowTheme(theme).catch(console.error);
+  void desktop.setWindowTheme(theme).catch(console.error);
 }
 
 function selectSettingsTab(selected: HTMLButtonElement): void {
@@ -816,7 +813,7 @@ function returnFromSettings(): void {
 for (const picker of pickerButtons) {
   picker.addEventListener('click', () => {
     openSourceMenu.close();
-    void selectDocument(pickDocument, (error) => showError(launcherError,
+    void selectDocument(desktop.pickDocument, (error) => showError(launcherError,
       documentError(error, 'Choose a readable PDF, EPUB, or Markdown file.')));
   });
 }
@@ -840,7 +837,7 @@ retryOnlineButton.addEventListener('click', () => retryOnline?.());
 reconnectButton.addEventListener('click', () => {
   if (!missingDocument) return;
   if (missingDocument.online) showLinkDialog(missingDocument);
-  else void selectDocument(pickDocument, (error) => showError(launcherError, documentError(error,
+  else void selectDocument(desktop.pickDocument, (error) => showError(launcherError, documentError(error,
     error instanceof Error && !/password/i.test(error.name) ? error.message : 'Choose the original file.')), missingDocument);
 });
 button('cancel-link').addEventListener('click', () => {
@@ -873,7 +870,7 @@ element('link-form').addEventListener('submit', async (event) => {
   linkInput.readOnly = submit.disabled = true;
   button('cancel-link').focus();
   const opened = await selectDocument(async (signal) => ({
-    path: url.href, name, online: true, bytes: await readOnlinePdf(url.href, signal),
+    path: url.href, name, online: true, bytes: await desktop.readOnlinePdf(url.href, signal),
   }), (error) => {
     showError(linkError, documentError(error, 'Could not open this PDF link. Check that it opens a PDF directly.'));
     submit.textContent = 'Retry';
@@ -1188,7 +1185,7 @@ for (const [trigger, errorNode] of [[osSettingsButton, settingsError], [button('
   trigger.addEventListener('click', async () => {
     showError(errorNode);
     try {
-      await openNotificationSettings();
+      await desktop.openNotificationSettings();
     } catch {
       showError(errorNode, 'Could not open Windows Settings. Open it manually to change notifications.');
     }
@@ -1210,7 +1207,7 @@ if (os !== 'browser') {
   let resizeFrame = 0;
   async function syncMaximizeButton(): Promise<void> {
     if (screen === 'reader') return;
-    const maximized = await isWindowMaximized();
+    const maximized = await desktop.isWindowMaximized();
     maximize.setAttribute('aria-label', maximized ? 'Restore window' : 'Maximize window');
     maximize.title = maximized ? 'Restore' : 'Maximize';
     element('window-maximize-icon').hidden = maximized;
@@ -1221,19 +1218,19 @@ if (os !== 'browser') {
     showInteractionError('The window command could not be completed.');
   });
   const maximizeOrRestore = async () => {
-    await toggleMaximizeWindow();
+    await desktop.toggleMaximizeWindow();
     await syncMaximizeButton();
   };
   element('window-bar').addEventListener('mousedown', (event) => {
     if (event.button !== 0 || !(event.target instanceof Element)
       || event.target.closest('button, #window-menu') || !event.target.closest('[data-window-drag]')) return;
-    runWindow(event.detail === 2 ? maximizeOrRestore : startDragging);
+    runWindow(event.detail === 2 ? maximizeOrRestore : () => desktop.startDragging());
   });
-  button('window-minimize').addEventListener('click', () => runWindow(minimizeWindow));
+  button('window-minimize').addEventListener('click', () => runWindow(() => desktop.minimizeWindow()));
   maximize.addEventListener('click', () => runWindow(maximizeOrRestore));
   button('window-close').addEventListener('click', () => {
     persist();
-    runWindow(closeWindow);
+    runWindow(() => desktop.closeWindow());
   });
   window.addEventListener('resize', () => {
     cancelAnimationFrame(resizeFrame);

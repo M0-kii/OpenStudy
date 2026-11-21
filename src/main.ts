@@ -423,9 +423,11 @@ function updateReading(state: ReaderState): void {
     readerPage.max = view.total;
     if (document.activeElement !== readerPage) readerPage.value = view.page;
     readerProgress.max = view.total;
+    readerProgress.style.setProperty('--attr-max', view.total);
     readerProgress.disabled = view.total === '1';
     if (!readerProgress.matches(':active')) {
       readerProgress.value = view.page;
+      readerProgress.style.setProperty('--control-value', view.page);
       readerProgress.setAttribute('aria-valuetext', view.location);
     }
     element('reader-page-total').textContent = `/ ${view.total}`;
@@ -906,6 +908,9 @@ readerPage.addEventListener('blur', (event) => {
 });
 readerProgress.addEventListener('input', () => {
   readerProgress.setAttribute('aria-valuetext', `Page ${readerProgress.value} of ${readerProgress.max}`);
+});
+readerProgress.addEventListener('input', () => {
+  readerProgress.style.setProperty('--control-value', readerProgress.value);
 });
 readerProgress.addEventListener('change', () => void jumpToPdfPage(readerProgress.valueAsNumber));
 button('zoom-in').addEventListener('click', () => void readerAction((active) => active.zoom(1)));

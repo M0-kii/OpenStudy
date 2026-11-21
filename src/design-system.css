@@ -146,6 +146,72 @@ input, select, textarea, kbd { corner-shape: squircle; }
   box-shadow: var(--popup-shadow);
 }
 
+/* Range slider — native input, styled track and thumb */
+.range-slider {
+  --slider-track-size: 6px;
+  --slider-thumb-size: 18px;
+  --slider-track-radius: 999px;
+  --slider-thumb-radius: 6px;
+  --slider-track-color: var(--line);
+  --slider-fill-color: var(--accent);
+  --slider-thumb-color: var(--panel);
+  --slider-direction: to right;
+  --attr-min: attr(min type(<number>), 0);
+  --attr-max: attr(max type(<number>), 100);
+  --control-value: attr(value type(<number>), 50);
+  --slider-progress: calc(progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%);
+  appearance: none;
+  inline-size: 100%;
+  block-size: 2.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  corner-shape: squircle;
+}
+.range-slider:dir(rtl) { --slider-direction: to left; }
+@supports not (opacity: progress(1, 0, 100)) {
+  .range-slider {
+    --slider-progress: calc((var(--control-value) - var(--attr-min)) / (var(--attr-max) - var(--attr-min)) * 100%);
+  }
+}
+.range-slider:focus-visible { outline: 2px solid var(--slider-fill-color); outline-offset: 4px; border-radius: var(--radius-sm); }
+.range-slider:disabled { opacity: .5; cursor: default; }
+.range-slider::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(var(--slider-direction), var(--slider-fill-color) var(--slider-progress), var(--slider-track-color) var(--slider-progress));
+}
+.range-slider::-webkit-slider-thumb {
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  border: 2px solid var(--slider-fill-color);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+}
+.range-slider::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+.range-slider::-moz-range-progress {
+  block-size: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-fill-color);
+}
+.range-slider::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 2px solid var(--slider-fill-color);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+}
+
 /* Utility */
 .visually-hidden {
   position: absolute;

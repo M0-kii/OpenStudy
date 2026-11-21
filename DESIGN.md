@@ -21,6 +21,10 @@ The UI is built from a token layer and the app's existing CSS classes. Tokens li
 | Motion | `--duration-fast`, `--duration-normal`, `--ease-out` | All transitions are wrapped in `prefers-reduced-motion: no-preference`. |
 | Layers | `--z-raised` … `--z-skip` | z-index values come from the scale instead of literals. |
 
+## Range slider
+
+`.range-slider` styles a native `<input type="range">` — no custom pointer handling. Keep `min`, `max` and `value` in sync with the `--attr-min`, `--attr-max` and `--control-value` custom properties so the filled track works in WebKit as well as Firefox. The catalog's `Slider` emits the same class.
+
 ## Two-plane layout
 
 `--plane` is the background the sidebar sits on. `--panel` is the foreground content surface, inset by `--plane-gap` and rounded with `--panel-radius`. Fullscreen reading removes the frame: `.workspace-shell:has(.reader:not([hidden]))` resets padding, gap, radius and shadow.

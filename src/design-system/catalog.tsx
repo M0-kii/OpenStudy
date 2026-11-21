@@ -1,4 +1,4 @@
-import { useEffect, useState, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ButtonHTMLAttributes, type CSSProperties, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../design-system.css';
 import '../style.css';
@@ -70,6 +70,42 @@ function TextField({ label, ...rest }: InputHTMLAttributes<HTMLInputElement> & {
   );
 }
 
+function Slider({ label, value, min = 0, max = 100, step = 1, disabled = false, format, onChange }: {
+  label: string;
+  value: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  format?: (value: number) => string;
+  onChange(value: number): void;
+}) {
+  const id = useId();
+  const text = format ? format(value) : String(value);
+  const style = { '--attr-min': min, '--attr-max': max, '--control-value': value } as CSSProperties;
+  return (
+    <div className="ds-slider">
+      <div className="ds-slider-head">
+        <label htmlFor={id}>{label}</label>
+        <output htmlFor={id}>{text}</output>
+      </div>
+      <input
+        id={id}
+        className="range-slider"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        aria-valuetext={text}
+        style={style}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
+  );
+}
+
 const colorTokens = ['--plane', '--panel', '--control', '--hover', '--line', '--edge', '--text', '--muted', '--accent', '--accent-soft'];
 const typeTokens = ['--text-xs', '--text-sm', '--text-base', '--text-md', '--text-lg', '--text-xl', '--text-2xl'];
 const radiusTokens = ['--radius-sm', '--radius-md', '--radius-lg', '--radius-xl'];
@@ -86,6 +122,8 @@ function Swatch({ token }: { token: string }) {
 function Catalog() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [tab, setTab] = useState('Appearance');
+  const [size, setSize] = useState(70);
+  const [minutes, setMinutes] = useState(25);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => { drawIcons(); });
@@ -149,6 +187,15 @@ function Catalog() {
           <IconButton icon="sliders-horizontal" label="Reading options" />
           <Chip>Default</Chip>
           <Chip selected>Selected</Chip>
+        </div>
+      </Surface>
+
+      <Surface className="ds-section">
+        <h2>Sliders</h2>
+        <div className="ds-sliders">
+          <Slider label="Reading size" value={size} min={40} max={120} step={5} format={(value) => `${value}%`} onChange={setSize} />
+          <Slider label="Session length" value={minutes} min={0} max={90} step={5} format={(value) => value ? `${value} min` : 'No timer'} onChange={setMinutes} />
+          <Slider label="Unavailable while reading" value={20} disabled onChange={() => {}} />
         </div>
       </Surface>
 

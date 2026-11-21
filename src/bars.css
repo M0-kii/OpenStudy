@@ -84,7 +84,7 @@
   text-align: center;
 }
 #reader-page::-webkit-inner-spin-button, #reader-page::-webkit-outer-spin-button { margin: 0; appearance: none; }
-#reader-progress { width: clamp(48px, 10vw, 116px); min-width: 36px; height: 30px; margin: 0; accent-color: var(--text); cursor: pointer; }
+#reader-progress { width: clamp(48px, 10vw, 116px); min-width: 36px; height: 30px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 #reader-progress:disabled { cursor: default; }
 .reader-entry-hint {
   position: absolute;

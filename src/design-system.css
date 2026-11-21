@@ -6,22 +6,28 @@ html:root {
   color-scheme: dark;
 
   /* Color: foundational */
-  --base: #0a0a0a;
-  --surface: #141414;
-  --control: #1d1d1d;
-  --hover: #262626;
-  --line: #303030;
-  --edge: #626262;
-  --text: #fafafa;
-  --muted: #a8a8a8;
-  --primary-hover: #e3e3e3;
-  --primary-active: #c9c9c9;
-  --strong-hover: #3a3a3a;
+  --base: #0d0c0a;
+  --surface: #171613;
+  --control: #211f1b;
+  --hover: #2b2823;
+  --line: #37332c;
+  --edge: #6b6559;
+  --text: #f7f4ee;
+  --muted: #a9a398;
+  --strong-hover: #3a3630;
   --modal-backdrop: #000b;
+
+  /* Color: accent — warm ochre, matching the find highlight */
+  --accent: #d8b26a;
+  --accent-strong: #e8c98f;
+  --accent-muted: #b8934c;
+  --accent-contrast: #1a1408;
+  --accent-soft: color-mix(in oklab, var(--accent) 16%, transparent);
+  --accent-line: color-mix(in oklab, var(--accent) 55%, transparent);
 
   /* Color: surfaces */
   --plane: var(--base);
-  --panel: #17181a;
+  --panel: #1b1a16;
   --panel-border: var(--line);
   --shadow-color: #000;
 
@@ -91,22 +97,24 @@ html:root {
 
 html:root[data-theme='light'] {
   color-scheme: light;
-  --base: #efefef;
-  --surface: #fafafa;
-  --control: #e7e7e7;
-  --hover: #e1e1e1;
-  --line: #d4d4d4;
-  --edge: #868686;
-  --text: #171717;
-  --muted: #575757;
-  --primary-hover: #343434;
-  --primary-active: #4c4c4c;
-  --strong-hover: #d1d1d1;
+  --base: #efede8;
+  --surface: #faf9f6;
+  --control: #e8e5de;
+  --hover: #e2ded5;
+  --line: #d6d1c7;
+  --edge: #8a8478;
+  --text: #1c1a16;
+  --muted: #5c574e;
+  --strong-hover: #d5d0c5;
   --modal-backdrop: #0006;
-  --plane: #ececee;
-  --panel: #ffffff;
+  --accent: #8a661d;
+  --accent-strong: #755417;
+  --accent-muted: #5f4412;
+  --accent-contrast: #fffdf8;
+  --plane: #ece9e2;
+  --panel: #fffefb;
   --panel-border: var(--line);
-  --shadow-color: #1b1b24;
+  --shadow-color: #2a241a;
 }
 
 /* Base */
@@ -119,6 +127,7 @@ button, input, select, textarea { color: inherit; font: inherit; }
 button, select { cursor: pointer; }
 button:disabled { opacity: .45; cursor: default; }
 :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+::selection { background: var(--accent-soft); color: var(--text); }
 
 /* Surface recipes */
 .surface, .study-space {

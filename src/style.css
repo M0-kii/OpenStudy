@@ -113,7 +113,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
 .sidebar-button:not(:disabled):active { background: var(--line); }
 .sidebar-button[aria-current='page'] {
   background: color-mix(in oklab, var(--control) 75%, var(--plane));
-  box-shadow: inset 0 0 0 1px var(--panel-border);
+  box-shadow: inset 0 0 0 1px var(--accent-line);
   color: var(--text);
 }
 .sidebar-library { display: flex; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
@@ -182,9 +182,9 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
   font-weight: 550;
   text-decoration: none;
 }
-.button-primary { min-height: 40px; padding-inline: 13px; border-color: var(--text); background: var(--text); color: var(--base); font-weight: 650; }
-.button-primary:not(:disabled):hover { background: var(--primary-hover); border-color: var(--primary-hover); }
-.button-primary:not(:disabled):active { background: var(--primary-active); border-color: var(--primary-active); }
+.button-primary { min-height: 40px; padding-inline: 13px; border-color: var(--accent); background: var(--accent); color: var(--accent-contrast); font-weight: 650; }
+.button-primary:not(:disabled):hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+.button-primary:not(:disabled):active { background: var(--accent-muted); border-color: var(--accent-muted); }
 .button-outline { border-color: var(--edge); }
 .quiet-button { color: var(--muted); }
 .button-outline:not(:disabled):hover, .quiet-button:not(:disabled):hover, .icon-button:not(:disabled):hover { background: var(--hover); color: var(--text); }
@@ -243,7 +243,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
   text-align: start;
 }
 .recent-item:hover { background: var(--hover); }
-.recent-item[aria-current='true'] { background: var(--control); box-shadow: inset 0 0 0 1px var(--panel-border); }
+.recent-item[aria-current='true'] { background: var(--control); box-shadow: inset 0 0 0 1px var(--accent-line); }
 .recent-item:focus-visible { outline-offset: 0; }
 .recent-title {
   display: -webkit-box;
@@ -331,7 +331,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
 }
 .settings-tab:hover { background: var(--hover); color: var(--text); }
 .settings-tab:active { background: var(--control); }
-.settings-tab[aria-selected='true'] { border-bottom-color: currentColor; color: var(--text); }
+.settings-tab[aria-selected='true'] { border-bottom-color: var(--accent); color: var(--text); }
 .settings-tab:focus-visible { outline-offset: -3px; }
 .settings-list { margin: 22px var(--workspace-padding); }
 .settings-list h2 { margin-bottom: 4px; font-size: 1.07rem; font-weight: 650; }
@@ -339,7 +339,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
 .setting-row + .setting-row { border-top: 1px solid var(--line); }
 .setting-copy label { font-size: .96rem; font-weight: 600; }
 .setting-row p, .settings-note { max-width: 65ch; color: var(--muted); font-size: .9rem; }
-.setting-row input[type='checkbox'] { width: 17px; height: 17px; margin: 0 2px 0 0; accent-color: var(--text); cursor: pointer; }
+.setting-row input[type='checkbox'] { width: 17px; height: 17px; margin: 0 2px 0 0; accent-color: var(--accent); cursor: pointer; }
 .settings-note { margin: 7px 0 12px; }
 
 .workspace-shell:has(.reader:not([hidden])) {
@@ -502,6 +502,8 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
   align-items: center;
   gap: 8px;
   padding: 4px 5px 4px 10px;
+  border-inline-start-width: 3px;
+  border-inline-start-color: var(--accent);
   font-size: .88rem;
 }
 .battery-alert > .icon { color: var(--muted); }
@@ -571,10 +573,10 @@ textarea { display: block; margin-top: 5px; resize: vertical; }
 .epub-options { display: grid; grid-template-columns: 1fr auto; gap: 9px; align-items: center; }
 .pdf-reading-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .inline-option { display: inline-flex; align-items: center; gap: 7px; }
-.inline-option input { margin: 0; accent-color: var(--text); }
+.inline-option input { margin: 0; accent-color: var(--accent); }
 #notifications-description p + p { margin-top: 8px; }
 .fit-controls { display: flex; flex-wrap: wrap; gap: 6px; }
-.fit-controls .button[aria-pressed='true'] { border-color: var(--text); background: var(--control); }
+.fit-controls .button[aria-pressed='true'] { border-color: var(--accent); background: var(--control); color: var(--accent); }
 
 @media (max-width: 950px) {
   .reader { --reader-panel-top: 116px; }

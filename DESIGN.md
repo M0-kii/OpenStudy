@@ -13,7 +13,7 @@ The UI is built from a token layer, a small set of React components, and the app
 
 | Group | Examples | Rule |
 | --- | --- | --- |
-| Color | `--plane`, `--panel`, `--control`, `--text`, `--muted` | Use semantic tokens, never raw hex in components. Light theme overrides them on `html[data-theme='light']`. |
+| Color | `--plane`, `--panel`, `--control`, `--text`, `--muted`, `--accent` | Use semantic tokens, never raw hex in components. Neutrals are warm; the single ochre accent drives primary buttons, active states, form controls and selection. Light theme overrides them on `html[data-theme='light']`. |
 | Type | `--text-xs` … `--text-2xl`, `--weight-medium`, `--tracking-tight` | Headings use `text-wrap: balance`; paragraphs use `text-wrap: pretty`. |
 | Space | `--space-1` … `--space-7` (4–48px) | Use for gaps and padding. Layout-specific values such as `--workspace-padding` stay separate. |
 | Radius | `--radius-sm` … `--radius-xl` | Surfaces use `--panel-radius` / `--popup-radius`. `corner-shape: squircle` is applied as a progressive enhancement. |

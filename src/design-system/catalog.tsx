@@ -7,7 +7,7 @@ import { drawIcons } from '../window-ui';
 import { Button, Chip, IconButton, SettingRow, Surface, Tabs, TextField } from './components';
 import './catalog.css';
 
-const colorTokens = ['--plane', '--panel', '--control', '--hover', '--line', '--edge', '--text', '--muted'];
+const colorTokens = ['--plane', '--panel', '--control', '--hover', '--line', '--edge', '--text', '--muted', '--accent', '--accent-soft'];
 const typeTokens = ['--text-xs', '--text-sm', '--text-base', '--text-md', '--text-lg', '--text-xl', '--text-2xl'];
 const radiusTokens = ['--radius-sm', '--radius-md', '--radius-lg', '--radius-xl'];
 

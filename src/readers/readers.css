@@ -31,7 +31,7 @@
   margin-inline: auto;
   border-radius: 6px;
   corner-shape: squircle;
-  background: #fafafa;
+  background: var(--paper-bg);
   outline: 1px solid var(--line);
 }
 

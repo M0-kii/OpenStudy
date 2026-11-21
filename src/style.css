@@ -701,3 +701,11 @@ textarea { display: block; margin-top: 5px; resize: vertical; }
   }
   .settings-tab[aria-selected='true'] { border-bottom-color: Highlight; }
 }
+
+html[data-motion='reduced'] *,
+html[data-motion='reduced'] *::before,
+html[data-motion='reduced'] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}

@@ -7,6 +7,7 @@ import { desktop, platform, type DocumentSelection } from './desktop';
 import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { FindLifecycle } from './readers/find-lifecycle.ts';
+import { setPaper } from './paper.ts';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
 import { pdfFitMode, readingView } from './session.ts';
 import { applySettings, type SettingsControls } from './settings-view.ts';
@@ -43,6 +44,9 @@ const settingsError = element('settings-error');
 const settingsCategories = element('settings-categories');
 const settingsTabs = Array.from(settingsCategories.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
 const themeSelect = element<HTMLSelectElement>('appearance-theme');
+const accentSelect = element<HTMLSelectElement>('appearance-accent');
+const paperSelect = element<HTMLSelectElement>('appearance-paper');
+const motionSelect = element<HTMLSelectElement>('appearance-motion');
 const timerSelect = element<HTMLSelectElement>('session-minutes');
 const defaultMinutes = element<HTMLSelectElement>('default-minutes');
 const showCountdown = element<HTMLInputElement>('show-countdown');
@@ -88,11 +92,17 @@ if (os === 'macos') element('open-file-shortcut').textContent = '⌘O';
 drawIcons();
 
 const controls: SettingsControls = {
-  defaultMinutes, timerSelect, showCountdown, themeSelect, continuousPdf, readerContinuousPdf,
-  blockAppSwitching, batteryAlerts, batteryAlarm, sidebarToggle, workspace,
+  defaultMinutes, timerSelect, showCountdown, themeSelect, accentSelect, paperSelect, motionSelect,
+  continuousPdf, readerContinuousPdf, blockAppSwitching, batteryAlerts, batteryAlarm, sidebarToggle, workspace,
   sidebarCollapseIcon: element('sidebar-collapse-icon'),
   sidebarExpandIcon: element('sidebar-expand-icon'),
   setTheme: (theme) => applyAppearance(theme),
+  setPreferences: (next) => {
+    document.documentElement.dataset.accent = next.accent;
+    document.documentElement.dataset.paper = next.paper;
+    document.documentElement.dataset.motion = next.motion;
+    setPaper(next.paper);
+  },
 };
 
 let library: SavedDocument[] = [];
@@ -764,11 +774,17 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
   }
 }
 
+function resolvedTheme(theme: StudySettings['theme']): 'dark' | 'light' {
+  if (theme !== 'system') return theme;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 function applyAppearance(theme = settings.theme): void {
-  if (document.documentElement.dataset.theme === theme) return;
-  document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#fafafa' : '#0a0a0a');
-  void desktop.setWindowTheme(theme).catch(console.error);
+  const resolved = resolvedTheme(theme);
+  if (document.documentElement.dataset.theme === resolved) return;
+  document.documentElement.dataset.theme = resolved;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', resolved === 'light' ? '#fafafa' : '#0a0a0a');
+  void desktop.setWindowTheme(resolved).catch(console.error);
 }
 
 function selectSettingsTab(selected: HTMLButtonElement): void {
@@ -1140,10 +1156,13 @@ element('windows-focus-setting').hidden = os !== 'windows';
 applySettings(settings, controls);
 defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
 showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
-themeSelect.addEventListener('change', () => changeSettings({
-  ...settings,
-  theme: themeSelect.value === 'light' ? 'light' : 'dark',
-}));
+themeSelect.addEventListener('change', () => changeSettings({ ...settings, theme: themeSelect.value as StudySettings['theme'] }));
+accentSelect.addEventListener('change', () => changeSettings({ ...settings, accent: accentSelect.value as StudySettings['accent'] }));
+paperSelect.addEventListener('change', () => changeSettings({ ...settings, paper: paperSelect.value as StudySettings['paper'] }));
+motionSelect.addEventListener('change', () => changeSettings({ ...settings, motion: motionSelect.value as StudySettings['motion'] }));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (settings.theme === 'system') applyAppearance('system');
+});
 continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
 blockAppSwitching.addEventListener('change', () => changeSettings({ ...settings, blockAppSwitching: blockAppSwitching.checked }));
 batteryAlerts.addEventListener('change', () => changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked }));

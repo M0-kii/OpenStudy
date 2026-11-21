@@ -118,6 +118,20 @@ html:root[data-theme='light'] {
   --shadow-color: #2a241a;
 }
 
+/* Paper */
+html:root { --paper-bg: #fafafa; --paper-fg: #0a0a0a; }
+html:root[data-paper='sepia'] { --paper-bg: #f4ecd8; --paper-fg: #3b3021; }
+html:root[data-paper='night'] { --paper-bg: #1b1a16; --paper-fg: #e8e3d6; }
+
+/* Accent alternatives */
+html:root[data-accent='sage'] { --accent: #86a891; --accent-strong: #a6c4ad; --accent-muted: #68846f; --accent-contrast: #102017; }
+html:root[data-accent='slate'] { --accent: #8fa6bd; --accent-strong: #b0c3d6; --accent-muted: #6d8399; --accent-contrast: #101820; }
+html:root[data-accent='rose'] { --accent: #c98f8f; --accent-strong: #e0adad; --accent-muted: #a76f6f; --accent-contrast: #201010; }
+html:root[data-theme='light'][data-accent='ochre'] { --accent: #8a661d; --accent-strong: #755417; --accent-muted: #5f4412; --accent-contrast: #fffdf8; }
+html:root[data-theme='light'][data-accent='sage'] { --accent: #3f6b54; --accent-strong: #2f5541; --accent-muted: #66836f; --accent-contrast: #f7fff9; }
+html:root[data-theme='light'][data-accent='slate'] { --accent: #3c5f7d; --accent-strong: #2d4a63; --accent-muted: #68859b; --accent-contrast: #f5faff; }
+html:root[data-theme='light'][data-accent='rose'] { --accent: #9c5656; --accent-strong: #814141; --accent-muted: #bd8585; --accent-contrast: #fff8f8; }
+
 /* Base */
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }

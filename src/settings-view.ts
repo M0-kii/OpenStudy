@@ -5,6 +5,9 @@ export interface SettingsControls {
   timerSelect: HTMLSelectElement;
   showCountdown: HTMLInputElement;
   themeSelect: HTMLSelectElement;
+  accentSelect: HTMLSelectElement;
+  paperSelect: HTMLSelectElement;
+  motionSelect: HTMLSelectElement;
   continuousPdf: HTMLInputElement;
   readerContinuousPdf: HTMLInputElement;
   blockAppSwitching: HTMLInputElement;
@@ -15,6 +18,7 @@ export interface SettingsControls {
   sidebarCollapseIcon: HTMLElement;
   sidebarExpandIcon: HTMLElement;
   setTheme(theme: StudySettings['theme']): void;
+  setPreferences(settings: StudySettings): void;
 }
 
 export function applySettings(settings: StudySettings, controls: SettingsControls): void {
@@ -22,6 +26,9 @@ export function applySettings(settings: StudySettings, controls: SettingsControl
   controls.timerSelect.value = String(settings.defaultMinutes);
   controls.showCountdown.checked = settings.showCountdown;
   controls.themeSelect.value = settings.theme;
+  controls.accentSelect.value = settings.accent;
+  controls.paperSelect.value = settings.paper;
+  controls.motionSelect.value = settings.motion;
   controls.continuousPdf.checked = settings.pdfContinuous;
   controls.readerContinuousPdf.checked = settings.pdfContinuous;
   controls.blockAppSwitching.checked = settings.blockAppSwitching;
@@ -38,4 +45,5 @@ export function applySettings(settings: StudySettings, controls: SettingsControl
   if (controls.workspace) controls.workspace.dataset.sidebar = settings.sidebarCollapsed ? 'collapsed' : 'expanded';
 
   controls.setTheme(settings.theme);
+  controls.setPreferences(settings);
 }

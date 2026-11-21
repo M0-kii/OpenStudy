@@ -4,6 +4,7 @@ import type { Location } from 'epubjs/types/rendition';
 import type Section from 'epubjs/types/section';
 import './readers.css';
 import { flattenContents } from './contents';
+import { paperTheme } from '../paper.ts';
 import { emptyFindResult, findGroups, findPattern, groupedMatches, indexText, matchRange, selectMatch, type GroupMatch } from './find';
 import { bounded, epubDefaults, type DocumentPreview, type EpubLayout, type EpubPosition, type FindDirection, type FindResult, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
 
@@ -12,13 +13,16 @@ const activeElements = new Set(['applet', 'embed', 'fencedframe', 'foreignobject
 const removedAttributes = new Set(['target', 'download', 'ping', 'xml:base', 'srcdoc', 'srcset']);
 const urlAttributes = new Set(['src', 'href', 'xlink:href', 'poster', 'background']);
 const absoluteUrl = /^(?:[\w+.-]+:|[\\/]{2})/;
-const chapterStyle = `
-  html, body { background: #fafafa !important; color: #0a0a0a !important; }
-  body { font-size: var(--study-size) !important; line-height: var(--study-leading) !important; }
-  :where(p, li, dt, dd, blockquote) { font-size: inherit !important; line-height: var(--study-leading) !important; }
-  a[href] { color: #0a0a0a; text-decoration: underline; }
-  :focus-visible { outline: 2px solid #0a0a0a; outline-offset: 2px; }
-`;
+function chapterStyle(): string {
+  const paper = paperTheme();
+  return `
+    html, body { background: ${paper.background} !important; color: ${paper.color} !important; }
+    body { font-size: var(--study-size) !important; line-height: var(--study-leading) !important; }
+    :where(p, li, dt, dd, blockquote) { font-size: inherit !important; line-height: var(--study-leading) !important; }
+    a[href] { color: ${paper.link}; text-decoration: underline; }
+    :focus-visible { outline: 2px solid ${paper.color}; outline-offset: 2px; }
+  `;
+}
 
 function sanitizeChapter(doc: Document) {
   const head = doc.querySelector('head');
@@ -53,7 +57,7 @@ function sanitizeChapter(doc: Document) {
   head.prepend(policy);
 
   const css = doc.createElementNS(head.namespaceURI, 'style');
-  css.textContent = chapterStyle;
+  css.textContent = chapterStyle();
   head.append(css);
 }
 

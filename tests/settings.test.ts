@@ -11,13 +11,15 @@ test('study settings persist validated values and recover from malformed storage
 
   const defaults = {
     defaultMinutes: 0, showCountdown: true, pdfContinuous: false, sidebarCollapsed: false,
-    theme: 'dark', blockAppSwitching: false, batteryAlerts: true, batteryAlarm: true,
+    theme: 'dark', accent: 'ochre', paper: 'paper', motion: 'full',
+    blockAppSwitching: false, batteryAlerts: true, batteryAlarm: true,
   };
   assert.deepEqual(loadSettings(storage), defaults);
 
   const changed = {
     defaultMinutes: 45, showCountdown: false, pdfContinuous: true, sidebarCollapsed: true,
-    theme: 'light', blockAppSwitching: true, batteryAlerts: false, batteryAlarm: false,
+    theme: 'system', accent: 'sage', paper: 'sepia', motion: 'reduced',
+    blockAppSwitching: true, batteryAlerts: false, batteryAlarm: false,
   } as const;
   saveSettings(changed, storage);
   assert.deepEqual(loadSettings(storage), changed);
@@ -32,4 +34,7 @@ test('study settings persist validated values and recover from malformed storage
   assert.deepEqual(loadSettings({ getItem: () => '{"theme":"unknown"}' }), defaults);
   assert.deepEqual(loadSettings({ getItem: () => '{"blockAppSwitching":"true","batteryAlerts":"false"}' }), defaults);
   assert.deepEqual(loadSettings({ getItem: () => '{"batteryAlarm":"false"}' }), defaults);
+  assert.deepEqual(loadSettings({ getItem: () => '{"accent":"bad","paper":"night","motion":"reduced"}' }), {
+    ...defaults, paper: 'night', motion: 'reduced',
+  });
 });

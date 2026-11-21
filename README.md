@@ -15,7 +15,7 @@ Download the installer for your system from [GitHub Releases](https://github.com
 
 ## Notification settings
 
-Open **Settings** from the sidebar. Choose a light or dark theme under **Appearance**. Under **Study sessions**, set a default session length, show or hide the countdown, or stack PDF pages for continuous scrolling.
+Open **Settings** from the sidebar. Under **Appearance**, choose dark, light, or follow the system; pick an accent color; set the paper tone for EPUB and Markdown documents; and reduce motion. Under **Study sessions**, set a default session length, show or hide the countdown, or stack PDF pages for continuous scrolling.
 
 On Windows 11 and KDE Plasma, enable your desktop’s fullscreen Do Not Disturb rule. On macOS, add OpenStudy to a Focus schedule. That schedule follows the active app and can stay on during a windowed break. On GNOME, use the Do Not Disturb switch in the notification list.
 

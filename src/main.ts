@@ -10,6 +10,7 @@ import {
 import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
+import { applySettings, type SettingsControls } from './settings-view.ts';
 import { clockLabel, StudyTimer } from './timer';
 import { bindContextMenu, copyText, disclosure, drawIcons, type ContextCommand, type ContextTarget } from './window-ui';
 
@@ -86,6 +87,14 @@ const readerToolbar = disclosure(toolbarToggle, element('reader-toolbar'), eleme
 const sessionMenu = disclosure(sessionToggle, element('reader-session-card'), element('reader-session-dock'));
 if (os === 'macos') element('open-file-shortcut').textContent = '⌘O';
 drawIcons();
+
+const controls: SettingsControls = {
+  defaultMinutes, timerSelect, showCountdown, themeSelect, continuousPdf, readerContinuousPdf,
+  blockAppSwitching, batteryAlerts, batteryAlarm, sidebarToggle, workspace,
+  sidebarCollapseIcon: element('sidebar-collapse-icon'),
+  sidebarExpandIcon: element('sidebar-expand-icon'),
+  setTheme: (theme) => applyAppearance(theme),
+};
 
 let library: SavedDocument[] = [];
 let selection: { document: SavedDocument; bytes?: ArrayBuffer } | undefined;
@@ -754,12 +763,8 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
   showError(errorNode);
   try {
     saveSettings(next);
-    if (next.defaultMinutes !== settings.defaultMinutes) timerSelect.value = String(next.defaultMinutes);
     settings = next;
-    applySidebarLayout();
-    applyAppearance();
-    continuousPdf.checked = settings.pdfContinuous;
-    readerContinuousPdf.checked = settings.pdfContinuous;
+    applySettings(settings, controls);
     if (!settings.batteryAlerts) {
       batteryLevel = dismissedBatteryLevel = alarmedBatteryLevel = 0;
       batteryAlert.hidden = true;
@@ -768,22 +773,13 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     return true;
   } catch (error) {
     console.error(error);
-    defaultMinutes.value = String(settings.defaultMinutes);
-    showCountdown.checked = settings.showCountdown;
-    themeSelect.value = settings.theme;
-    continuousPdf.checked = settings.pdfContinuous;
-    readerContinuousPdf.checked = settings.pdfContinuous;
-    blockAppSwitching.checked = settings.blockAppSwitching;
-    batteryAlerts.checked = settings.batteryAlerts;
-    batteryAlarm.checked = settings.batteryAlarm;
-    batteryAlarm.disabled = !settings.batteryAlerts;
+    applySettings(settings, controls);
     showError(errorNode, 'OpenStudy could not save your settings. Try again.');
     return false;
   }
 }
 
-function applyAppearance(): void {
-  const theme = settings.theme;
+function applyAppearance(theme = settings.theme): void {
   if (document.documentElement.dataset.theme === theme) return;
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'light' ? '#fafafa' : '#0a0a0a');
@@ -810,17 +806,6 @@ settingsCategories.addEventListener('keydown', (event) => {
   selectSettingsTab(settingsTabs[next]);
   settingsTabs[next].focus();
 });
-
-function applySidebarLayout(): void {
-  const collapsed = settings.sidebarCollapsed;
-  if (workspace) workspace.dataset.sidebar = collapsed ? 'collapsed' : 'expanded';
-  const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
-  sidebarToggle.setAttribute('aria-expanded', String(!collapsed));
-  sidebarToggle.setAttribute('aria-label', label);
-  sidebarToggle.title = label;
-  element('sidebar-collapse-icon').hidden = collapsed;
-  element('sidebar-expand-icon').hidden = !collapsed;
-}
 
 function returnFromSettings(): void {
   if (screen !== 'settings' || busy) return;
@@ -1171,16 +1156,7 @@ element('launcher-notifications').textContent = notificationCopy();
 osSettingsButton.hidden = os !== 'windows';
 button('launcher-os-settings').hidden = os !== 'windows';
 element('windows-focus-setting').hidden = os !== 'windows';
-defaultMinutes.value = String(settings.defaultMinutes);
-timerSelect.value = String(settings.defaultMinutes);
-showCountdown.checked = settings.showCountdown;
-themeSelect.value = settings.theme;
-continuousPdf.checked = settings.pdfContinuous;
-readerContinuousPdf.checked = settings.pdfContinuous;
-blockAppSwitching.checked = settings.blockAppSwitching;
-batteryAlerts.checked = settings.batteryAlerts;
-batteryAlarm.checked = settings.batteryAlarm;
-batteryAlarm.disabled = !settings.batteryAlerts;
+applySettings(settings, controls);
 defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
 showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
 themeSelect.addEventListener('change', () => changeSettings({
@@ -1189,10 +1165,7 @@ themeSelect.addEventListener('change', () => changeSettings({
 }));
 continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
 blockAppSwitching.addEventListener('change', () => changeSettings({ ...settings, blockAppSwitching: blockAppSwitching.checked }));
-batteryAlerts.addEventListener('change', () => {
-  batteryAlarm.disabled = !batteryAlerts.checked;
-  changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked });
-});
+batteryAlerts.addEventListener('change', () => changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked }));
 batteryAlarm.addEventListener('change', () => changeSettings({ ...settings, batteryAlarm: batteryAlarm.checked }));
 sidebarToggle.addEventListener('click', () => {
   const errorNode = screen === 'settings' ? settingsError : screen === 'break' ? breakError : launcherError;
@@ -1389,8 +1362,6 @@ document.addEventListener('visibilitychange', () => {
 setInterval(updateClock, 250);
 setInterval(() => void checkBattery(), 30_000);
 
-applySidebarLayout();
-applyAppearance();
 setScreen('launcher');
 try {
   library = loadLibrary();

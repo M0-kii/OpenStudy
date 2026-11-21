@@ -216,6 +216,8 @@ export function openMarkdown(
     zoom: async (delta) => place(scrollFraction(), Math.round((zoom + delta * 0.1) * 100) / 100),
     fit: async () => place(scrollFraction(), 1),
     setEpubLayout: async () => {},
+    setPdfContinuous: async () => {},
+    setPdfFit: async () => {},
     contents: async () => closed ? [] : headings.flatMap((heading) => {
       const label = heading.textContent?.trim();
       return label ? [{

@@ -64,11 +64,11 @@ export interface Reader {
   zoom(delta: number): Promise<void>;
   fit(): Promise<void>;
   setEpubLayout(layout: Partial<EpubLayout>): Promise<void>;
-  setPdfContinuous?(enabled: boolean): Promise<void>;
-  setPdfFit?(fit: 'page' | 'width'): Promise<void>;
-  contents?(): Promise<readonly ReaderContentsEntry[]>;
-  find?(query: string, direction?: FindDirection, onProgress?: (result: FindResult) => void): Promise<FindResult>;
-  clearFind?(): void;
+  setPdfContinuous(enabled: boolean): Promise<void>;
+  setPdfFit(fit: 'page' | 'width'): Promise<void>;
+  contents(): Promise<readonly ReaderContentsEntry[]>;
+  find(query: string, direction?: FindDirection, onProgress?: (result: FindResult) => void): Promise<FindResult>;
+  clearFind(): void;
   destroy(): void;
 }
 

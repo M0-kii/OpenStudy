@@ -411,6 +411,8 @@ export async function openEpub(
       zoom: (delta) => setEpubLayout({ fontSize: layout.fontSize + delta * 2 }),
       fit: () => setEpubLayout(epubDefaults),
       setEpubLayout,
+      setPdfContinuous: async () => {},
+      setPdfFit: async () => {},
       contents,
       find,
       clearFind,

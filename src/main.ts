@@ -8,6 +8,7 @@ import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from 
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { FindLifecycle } from './readers/find-lifecycle.ts';
 import { loadSettings, saveSettings, type StudySettings } from './settings';
+import { pdfFitMode, readingView } from './session.ts';
 import { applySettings, type SettingsControls } from './settings-view.ts';
 import { clockLabel, StudyTimer } from './timer';
 import { bindContextMenu, copyText, disclosure, drawIcons, type ContextCommand, type ContextTarget } from './window-ui';
@@ -410,45 +411,34 @@ function persist(): boolean {
   }
 }
 
-function pdfFitMode(fit?: PdfFit): PdfFit | undefined {
-  if (fit !== 'auto') return fit;
-  return readerContinuousPdf.checked ? 'width' : 'page';
-}
-
 function updateReading(state: ReaderState): void {
   reading = state;
   updateActiveContents(state);
+  const view = readingView(state, readerContinuousPdf.checked);
   const location = element('reader-location');
-  const pdf = state.position.kind === 'pdf' && !!state.pageCount;
-  location.textContent = state.label;
-  location.hidden = pdf;
-  pdfPageJump.hidden = !pdf;
-  if (state.position.kind === 'pdf' && state.pageCount) {
-    const page = String(state.position.page);
-    const total = String(state.pageCount);
-    readerPage.max = total;
-    if (document.activeElement !== readerPage) readerPage.value = page;
-    readerProgress.max = total;
-    readerProgress.disabled = state.pageCount === 1;
+  location.textContent = view.location;
+  location.hidden = view.showPageJump;
+  pdfPageJump.hidden = !view.showPageJump;
+  if (view.page !== undefined && view.total !== undefined) {
+    readerPage.max = view.total;
+    if (document.activeElement !== readerPage) readerPage.value = view.page;
+    readerProgress.max = view.total;
+    readerProgress.disabled = view.total === '1';
     if (!readerProgress.matches(':active')) {
-      readerProgress.value = page;
-      readerProgress.setAttribute('aria-valuetext', state.label);
+      readerProgress.value = view.page;
+      readerProgress.setAttribute('aria-valuetext', view.location);
     }
-    element('reader-page-total').textContent = `/ ${total}`;
+    element('reader-page-total').textContent = `/ ${view.total}`;
   }
   const locationStatus = element('reader-location-status');
-  if (locationStatus.textContent !== state.label) locationStatus.textContent = state.label;
-  element('break-location').textContent = state.label;
-  button('previous-page').disabled = !state.canPrevious;
-  button('next-page').disabled = !state.canNext;
-  const size = element('zoom-level');
-  if (state.position.kind === 'epub') {
-    size.textContent = `${state.position.fontSize}px`;
-    element<HTMLSelectElement>('line-height').value = String(state.position.lineHeight);
-    element<HTMLSelectElement>('reading-width').value = String(state.position.width);
-  } else {
-    const fit = state.position.kind === 'pdf' ? pdfFitMode(state.position.fit) : undefined;
-    size.textContent = fit === 'page' || fit === 'width' ? `Fit ${fit}` : `${Math.round(state.position.zoom * 100)}%`;
+  if (locationStatus.textContent !== view.location) locationStatus.textContent = view.location;
+  element('break-location').textContent = view.location;
+  button('previous-page').disabled = !view.canPrevious;
+  button('next-page').disabled = !view.canNext;
+  element('zoom-level').textContent = view.zoomLabel;
+  if (view.epubLayout) {
+    element<HTMLSelectElement>('line-height').value = String(view.epubLayout.lineHeight);
+    element<HTMLSelectElement>('reading-width').value = String(view.epubLayout.width);
   }
   clearTimeout(saveDelay);
   if (reader) saveDelay = setTimeout(persist, 250);
@@ -635,7 +625,7 @@ async function resumeSession(): Promise<boolean> {
   try {
     await desktop.setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     setScreen('reader');
-    await reader?.setPdfContinuous?.(settings.pdfContinuous);
+    await reader?.setPdfContinuous(settings.pdfContinuous);
     timer?.resume(performance.now());
     updateClock();
     void checkBattery();
@@ -923,7 +913,7 @@ button('zoom-out').addEventListener('click', () => void readerAction((active) =>
 for (const fit of ['page', 'width'] as const) {
   button(`fit-${fit}`).addEventListener('click', () => {
     void readerAction(async (active) => {
-      await active.setPdfFit?.(fit);
+      await active.setPdfFit(fit);
       optionsDialog.close();
       viewport.focus();
     });
@@ -932,7 +922,7 @@ for (const fit of ['page', 'width'] as const) {
 button('reader-options').addEventListener('click', () => {
   if (!reader || busy || readerBusy) return;
   if (reading?.position.kind === 'pdf') {
-    const current = pdfFitMode(reading.position.fit);
+    const current = pdfFitMode(reading.position.fit, readerContinuousPdf.checked);
     button('fit-page').setAttribute('aria-pressed', String(current === 'page'));
     button('fit-width').setAttribute('aria-pressed', String(current === 'width'));
   }
@@ -945,10 +935,10 @@ readerContinuousPdf.addEventListener('change', async () => {
   readerContinuousPdf.disabled = true;
   try {
     await readerAction(async (active) => {
-      await active.setPdfContinuous?.(enabled);
+      await active.setPdfContinuous(enabled);
       if (!changeSettings({ ...settings, pdfContinuous: enabled }, readerError)) {
         readerContinuousPdf.checked = previous;
-        await active.setPdfContinuous?.(previous);
+        await active.setPdfContinuous(previous);
       }
     });
   } finally {
@@ -967,7 +957,7 @@ element<HTMLSelectElement>('reading-width').addEventListener('change', (event) =
 function closeReaderPanel(panel: HTMLElement, focus = false): void {
   if (!panel.hidden && panel === findPanel) {
     findLife.clear();
-    reader?.clearFind?.();
+    reader?.clearFind();
   }
   panel.hidden = true;
   const toggle = button(panel === contentsPanel ? 'toggle-contents' : 'toggle-find');
@@ -1019,7 +1009,7 @@ async function openContents(focus = true): Promise<void> {
   list.replaceChildren();
   showError(status, 'Loading contents…');
   try {
-    const entries = await active.contents?.() ?? [];
+    const entries = await active.contents();
     if (reader !== active || contentsPanel.hidden) return;
     showError(status, entries.length ? '' : 'No table of contents.');
     const items = document.createDocumentFragment();
@@ -1074,7 +1064,7 @@ button('close-contents').addEventListener('click', () => closeReaderPanel(conten
 button('close-find').addEventListener('click', () => closeReaderPanel(findPanel, true));
 findInput.addEventListener('input', () => {
   findLife.clear();
-  reader?.clearFind?.();
+  reader?.clearFind();
   showError(searchResult);
 });
 findInput.addEventListener('keydown', (event) => {
@@ -1096,7 +1086,7 @@ const findLife = new FindLifecycle({
   search: async (query, direction, onProgress) => {
     let result: FindResult | undefined;
     await readerAction(async (active) => {
-      result = await active.find?.(query, direction, onProgress);
+      result = await active.find(query, direction, onProgress);
     });
     return result;
   },

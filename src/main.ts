@@ -69,6 +69,7 @@ const preview = element('document-preview');
 const noteDialog = element<HTMLDialogElement>('note-dialog');
 const notesDialog = element<HTMLDialogElement>('notes-dialog');
 const optionsDialog = element<HTMLDialogElement>('options-dialog');
+const shortcutsDialog = element<HTMLDialogElement>('shortcuts-dialog');
 const linkDialog = element<HTMLDialogElement>('link-dialog');
 const linkInput = element<HTMLInputElement>('pdf-link');
 const linkError = element('link-error');
@@ -88,7 +89,11 @@ const windowCommands = Array.from(windowMenu.querySelectorAll<HTMLButtonElement>
 const appMenu = disclosure(windowMenuToggle, windowMenu);
 const readerToolbar = disclosure(toolbarToggle, element('reader-toolbar'), element('reader-chrome'));
 const sessionMenu = disclosure(sessionToggle, element('reader-session-card'), element('reader-session-dock'));
-if (os === 'macos') element('open-file-shortcut').textContent = '⌘O';
+if (os === 'macos') {
+  element('open-file-shortcut').textContent = '⌘O';
+  element('shortcut-open').textContent = '⌘O';
+  element('shortcut-find').textContent = '⌘F';
+}
 drawIcons();
 
 const controls: SettingsControls = {
@@ -950,6 +955,12 @@ button('reader-options').addEventListener('click', () => {
   optionsDialog.showModal();
 });
 button('close-options').addEventListener('click', () => optionsDialog.close());
+
+function showShortcuts(): void {
+  shortcutsDialog.showModal();
+  button('close-shortcuts').focus();
+}
+button('close-shortcuts').addEventListener('click', () => shortcutsDialog.close());
 readerContinuousPdf.addEventListener('change', async () => {
   const previous = settings.pdfContinuous;
   const enabled = readerContinuousPdf.checked;
@@ -1199,7 +1210,8 @@ for (const command of windowCommands) {
   command.addEventListener('click', () => {
     appMenu.close();
     windowMenuToggle.focus();
-    button(command.dataset.command!).click();
+    if (command.dataset.command === 'shortcuts') showShortcuts();
+    else button(command.dataset.command!).click();
   });
 }
 
@@ -1305,6 +1317,12 @@ function contextCommands({ source, target }: ContextTarget): ContextCommand[] {
 bindContextMenu(element('context-menu'), contextCommands);
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+  if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey
+    && !(event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) {
+    event.preventDefault();
+    showShortcuts();
+    return;
+  }
   if (screen === 'reader' && event.key.toLowerCase() === 'f' && (event.ctrlKey || event.metaKey) && !event.altKey) {
     event.preventDefault();
     openFind();

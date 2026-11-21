@@ -24,6 +24,7 @@
           <div class="window-menu-group">
             <button type="button" class="quiet-button" data-command="nav-library"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span>Study space</span></button>
             <button type="button" class="quiet-button" data-command="open-settings"><i class="icon" data-lucide="settings-2" aria-hidden="true"></i><span>Settings</span></button>
+            <button type="button" class="quiet-button" data-command="shortcuts"><i class="icon" data-lucide="keyboard" aria-hidden="true"></i><span>Keyboard shortcuts</span><kbd>?</kbd></button>
           </div>
         </div>
       </div>
@@ -382,6 +383,21 @@
       <p id="notes-empty">Anything you save while reading will appear here.</p>
       <ul id="notes-list" class="notes-list"></ul>
       <div class="dialog-actions"><button type="button" id="close-notes" class="button button-outline">Done</button></div>
+    </dialog>
+
+    <dialog id="shortcuts-dialog" aria-labelledby="shortcuts-heading">
+      <h2 id="shortcuts-heading">Keyboard shortcuts</h2>
+      <dl class="shortcut-list">
+        <div><dt>Open a file</dt><dd><kbd id="shortcut-open">Ctrl+O</kbd></dd></div>
+        <div><dt>Find in the document</dt><dd><kbd id="shortcut-find">Ctrl+F</kbd></dd></div>
+        <div><dt>Previous / next page</dt><dd><kbd>←</kbd> <kbd>→</kbd></dd></div>
+        <div><dt>Previous / next match</dt><dd><kbd>Enter</kbd> <kbd>Shift+Enter</kbd></dd></div>
+        <div><dt>Take a break</dt><dd><kbd>Esc</kbd></dd></div>
+        <div><dt>Close a panel or menu</dt><dd><kbd>Esc</kbd></dd></div>
+        <div><dt>Back from settings</dt><dd><kbd>Esc</kbd></dd></div>
+        <div><dt>Show this list</dt><dd><kbd>?</kbd></dd></div>
+      </dl>
+      <div class="dialog-actions"><button type="button" id="close-shortcuts" class="button button-outline">Done</button></div>
     </dialog>
 
     <dialog id="options-dialog" aria-labelledby="options-heading">

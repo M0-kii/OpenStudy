@@ -713,12 +713,28 @@ async function readerAction(action: (active: Reader) => Promise<unknown>): Promi
   }
 }
 
+let notesEntry: SavedDocument | undefined;
+
+function exportNotes(): void {
+  if (!notesEntry || !notesEntry.notes.length) return;
+  const body = [`# Notes — ${notesEntry.title}`, '', ...notesEntry.notes.flatMap((note) => [`## ${note.label || 'Passage'}`, '', note.text, ''])].join('\n');
+  const url = URL.createObjectURL(new Blob([body], { type: 'text/markdown;charset=utf-8' }));
+  const link = document.createElement('a');
+  const name = notesEntry.title.normalize('NFKC').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-|-$/g, '') || 'notes';
+  link.href = url;
+  link.download = `${name}.md`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function showNotes(entry = selection?.document): void {
   if (!entry || busy || readerBusy) return;
+  notesEntry = entry;
   const list = element('notes-list');
   const notes = entry.notes;
   list.replaceChildren();
   element('notes-empty').hidden = notes.length > 0;
+  button('export-notes').disabled = notes.length === 0;
   for (const note of notes) {
     const row = document.createElement('li');
     const text = document.createElement('p');
@@ -1156,6 +1172,7 @@ button('launcher-review-notes').addEventListener('click', () => showNotes());
 button('break-review-notes').addEventListener('click', () => showNotes());
 button('continue-review-notes').addEventListener('click', () => showNotes(lastDocument));
 button('close-notes').addEventListener('click', () => notesDialog.close());
+button('export-notes').addEventListener('click', exportNotes);
 
 const notificationsDescription = element('notifications-description');
 const osSettingsButton = button('open-os-settings');

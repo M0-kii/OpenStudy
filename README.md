@@ -21,7 +21,7 @@ On Windows 11 and KDE Plasma, enable your desktop’s fullscreen Do Not Disturb 
 
 On Windows, you can turn on **Block Alt+Tab while reading** under **Study sessions**. Press **Esc** to take a break and switch apps again.
 
-On laptops, OpenStudy can show a quiet alert at 20% and 10% while the battery is discharging. You can turn these alerts off under **Notifications**.
+On laptops, OpenStudy can show a quiet alert at 20% and 10% while the battery is discharging. You can turn these alerts off under **Notifications**. Turn on **Sound for low battery alerts** there to also hear a short chime when the alert appears during a session.
 
 ## Build from source
 

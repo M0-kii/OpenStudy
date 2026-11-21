@@ -16,6 +16,9 @@ export default defineConfig(() => {
   return {
     clearScreen: false,
     server: { watch: { ignored: ['**/src-tauri/**'] } },
-    build: { target: ['chrome105', 'safari16'] },
+    build: {
+      target: ['chrome105', 'safari16'],
+      rollupOptions: { input: { main: 'index.html', 'design-system': 'design-system.html' } },
+    },
   };
 });

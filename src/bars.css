@@ -11,9 +11,6 @@
   width: 204px;
   max-width: calc(100vw - 114px);
   padding: 4px;
-  border: 1px solid var(--edge);
-  border-radius: 8px;
-  background: var(--surface);
 }
 .window-menu-group + .window-menu-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
 .window-menu .quiet-button {

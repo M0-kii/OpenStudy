@@ -1,5 +1,7 @@
+import './design-system.css';
 import './style.css';
 import './bars.css';
+import { playLowBatteryChime, primeAlarm } from './alarm';
 import { batteryAlertLevel } from './battery';
 import {
   closeWindow, getBatteryStatus, isWindowMaximized, minimizeWindow, openNotificationSettings, pickDocument, platform,
@@ -47,6 +49,7 @@ const showCountdown = element<HTMLInputElement>('show-countdown');
 const continuousPdf = element<HTMLInputElement>('continuous-pdf');
 const blockAppSwitching = element<HTMLInputElement>('block-app-switching');
 const batteryAlerts = element<HTMLInputElement>('battery-alerts');
+const batteryAlarm = element<HTMLInputElement>('battery-alarm');
 const readerContinuousPdf = element<HTMLInputElement>('reader-continuous-pdf');
 const pdfPageJump = element<HTMLFormElement>('pdf-page-jump');
 const readerPage = element<HTMLInputElement>('reader-page');
@@ -108,6 +111,7 @@ let retryOnline: (() => void) | undefined;
 let batteryCheckPending = false;
 let batteryLevel = 0;
 let dismissedBatteryLevel = 0;
+let alarmedBatteryLevel = 0;
 let readerEntryHintShown = false;
 let readerEntryHintTimer: ReturnType<typeof setTimeout> | undefined;
 let contentsLinks: { entry: ReaderContentsEntry; button: HTMLButtonElement }[] = [];
@@ -472,13 +476,17 @@ async function checkBattery(): Promise<void> {
     const status = await getBatteryStatus();
     if (reader !== session || !settings.batteryAlerts) return;
     batteryLevel = batteryAlertLevel(status);
-    if (!batteryLevel) dismissedBatteryLevel = 0;
+    if (!batteryLevel) dismissedBatteryLevel = alarmedBatteryLevel = 0;
     const visible = batteryLevel > dismissedBatteryLevel && (screen === 'reader' || screen === 'break');
     if (visible && status) {
       const message = batteryLevel === 2
         ? `Battery at ${status.percent}%. Plug in now to keep reading.`
         : `Battery at ${status.percent}%. Plug in when you can.`;
       if (element('battery-message').textContent !== message) element('battery-message').textContent = message;
+      if (settings.batteryAlarm && batteryLevel > alarmedBatteryLevel) {
+        playLowBatteryChime();
+        alarmedBatteryLevel = batteryLevel;
+      }
     }
     batteryAlert.hidden = !visible;
   } catch {
@@ -508,6 +516,7 @@ function showReaderEntryHint(): void {
 
 async function startSession(entry = selection?.document, position = entry?.position, minutes = Number(timerSelect.value)): Promise<void> {
   if (screen !== 'launcher' || busy || !entry) return;
+  primeAlarm();
   setBusy(true);
   showError(readerError);
   let openingDocument = false;
@@ -552,7 +561,7 @@ async function startSession(entry = selection?.document, position = entry?.posit
     reading = undefined;
     missingDocument = undefined;
     retryOnlineButton.hidden = reconnectButton.hidden = true;
-    batteryLevel = dismissedBatteryLevel = 0;
+    batteryLevel = dismissedBatteryLevel = alarmedBatteryLevel = 0;
     setScreen('reader');
     await setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     openingDocument = true;
@@ -614,6 +623,7 @@ async function takeBreak(): Promise<void> {
 
 async function resumeSession(): Promise<boolean> {
   if (screen !== 'break' || busy) return false;
+  primeAlarm();
   setBusy(true);
   showError(breakError);
   try {
@@ -751,7 +761,7 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     continuousPdf.checked = settings.pdfContinuous;
     readerContinuousPdf.checked = settings.pdfContinuous;
     if (!settings.batteryAlerts) {
-      batteryLevel = dismissedBatteryLevel = 0;
+      batteryLevel = dismissedBatteryLevel = alarmedBatteryLevel = 0;
       batteryAlert.hidden = true;
     }
     updateClock();
@@ -765,6 +775,8 @@ function changeSettings(next: StudySettings, errorNode = settingsError): boolean
     readerContinuousPdf.checked = settings.pdfContinuous;
     blockAppSwitching.checked = settings.blockAppSwitching;
     batteryAlerts.checked = settings.batteryAlerts;
+    batteryAlarm.checked = settings.batteryAlarm;
+    batteryAlarm.disabled = !settings.batteryAlerts;
     showError(errorNode, 'OpenStudy could not save your settings. Try again.');
     return false;
   }
@@ -900,7 +912,7 @@ button('end-from-break').addEventListener('click', () => void endSession());
 button('previous-page').addEventListener('click', () => void readerAction((active) => active.previous()));
 button('next-page').addEventListener('click', () => void readerAction((active) => active.next()));
 button('dismiss-battery').addEventListener('click', () => {
-  dismissedBatteryLevel = batteryLevel;
+  dismissedBatteryLevel = alarmedBatteryLevel = batteryLevel;
   batteryAlert.hidden = true;
   element(screen === 'break' ? 'resume-session' : 'reader-viewport').focus();
 });
@@ -1167,6 +1179,8 @@ continuousPdf.checked = settings.pdfContinuous;
 readerContinuousPdf.checked = settings.pdfContinuous;
 blockAppSwitching.checked = settings.blockAppSwitching;
 batteryAlerts.checked = settings.batteryAlerts;
+batteryAlarm.checked = settings.batteryAlarm;
+batteryAlarm.disabled = !settings.batteryAlerts;
 defaultMinutes.addEventListener('change', () => changeSettings({ ...settings, defaultMinutes: Number(defaultMinutes.value) }));
 showCountdown.addEventListener('change', () => changeSettings({ ...settings, showCountdown: showCountdown.checked }));
 themeSelect.addEventListener('change', () => changeSettings({
@@ -1175,7 +1189,11 @@ themeSelect.addEventListener('change', () => changeSettings({
 }));
 continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
 blockAppSwitching.addEventListener('change', () => changeSettings({ ...settings, blockAppSwitching: blockAppSwitching.checked }));
-batteryAlerts.addEventListener('change', () => changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked }));
+batteryAlerts.addEventListener('change', () => {
+  batteryAlarm.disabled = !batteryAlerts.checked;
+  changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked });
+});
+batteryAlarm.addEventListener('change', () => changeSettings({ ...settings, batteryAlarm: batteryAlarm.checked }));
 sidebarToggle.addEventListener('click', () => {
   const errorNode = screen === 'settings' ? settingsError : screen === 'break' ? breakError : launcherError;
   changeSettings({ ...settings, sidebarCollapsed: !settings.sidebarCollapsed }, errorNode);

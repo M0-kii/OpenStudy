@@ -1,12 +1,12 @@
 # OpenStudy design system
 
-The UI is built from a token layer, a small set of React components, and the app's existing CSS classes. The tokens and React components live in `src/design-system/`; the app itself still uses imperative TypeScript for the reader, which owns its own DOM.
+The UI is built from a token layer and the app's existing CSS classes. Tokens live in `src/design-system.css`; the React catalog in `src/design-system/` reuses the same classes. The app itself still uses imperative TypeScript for the reader, which owns its own DOM.
 
 ## Layers
 
 - `src/design-system.css` — tokens, base element styles, and the `.surface` / `.surface-popup` recipes. Imported first in `src/main.ts`.
 - `src/style.css` and `src/bars.css` — app components built from those tokens.
-- `src/design-system/components.tsx` — React components (`Button`, `IconButton`, `Surface`, `Chip`, `SettingRow`, `Tabs`, `TextField`).
+- `src/design-system/catalog.tsx` — the React catalog and its primitives (`Button`, `IconButton`, `Surface`, `Chip`, `SettingRow`, `Tabs`, `TextField`). The primitives are private to the catalog; there is no second set.
 - `design-system.html` — live catalog. Run `pnpm dev` and open `/design-system.html`.
 
 ## Tokens
@@ -25,17 +25,6 @@ The UI is built from a token layer, a small set of React components, and the app
 
 `--plane` is the background the sidebar sits on. `--panel` is the foreground content surface, inset by `--plane-gap` and rounded with `--panel-radius`. Fullscreen reading removes the frame: `.workspace-shell:has(.reader:not([hidden]))` resets padding, gap, radius and shadow.
 
-## Using the React components
+## Adding to the catalog
 
-```tsx
-import { Button, Surface, SettingRow } from './design-system/components';
-
-<Surface className="my-panel">
-  <SettingRow label="Theme" help="Applied to the whole window.">
-    <select aria-label="Theme"><option>Dark</option></select>
-  </SettingRow>
-  <Button>Start studying</Button>
-</Surface>
-```
-
-The components intentionally reuse the app's existing class names (`.button`, `.icon-button`, `.setting-row`, `.settings-tab`) so the catalog and the desktop UI stay visually identical. Prefer composing these over introducing new one-off styles.
+The primitives in `catalog.tsx` emit the same classes the desktop UI uses (`.button`, `.icon-button`, `.setting-row`, `.settings-tab`). Compose those classes instead of introducing a second set. The catalog is their only consumer; if the app ever renders through React, lift them into a shared module first.

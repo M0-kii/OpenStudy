@@ -1,11 +1,74 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ButtonHTMLAttributes, type HTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../design-system.css';
 import '../style.css';
 import '../bars.css';
 import { drawIcons } from '../window-ui';
-import { Button, Chip, IconButton, SettingRow, Surface, Tabs, TextField } from './components';
 import './catalog.css';
+
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'outline' | 'quiet';
+};
+
+function Button({ variant = 'primary', className = '', ...rest }: ButtonProps) {
+  return <button type="button" className={`button button-${variant} ${className}`.trim()} {...rest} />;
+}
+
+function IconButton({ icon, label, className = '', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { icon: string; label: string }) {
+  return (
+    <button type="button" aria-label={label} title={label} className={`icon-button ${className}`.trim()} {...rest}>
+      <i className="icon" data-lucide={icon} aria-hidden="true" />
+    </button>
+  );
+}
+
+function Surface({ popup = false, className = '', ...rest }: HTMLAttributes<HTMLDivElement> & { popup?: boolean }) {
+  return <div className={`${popup ? 'surface-popup' : 'surface'} ${className}`.trim()} {...rest} />;
+}
+
+function Chip({ selected = false, className = '', ...rest }: HTMLAttributes<HTMLSpanElement> & { selected?: boolean }) {
+  return <span className={`ds-chip ${className}`.trim()} data-selected={selected} {...rest} />;
+}
+
+function SettingRow({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
+  return (
+    <div className="setting-row">
+      <div className="setting-copy">
+        <label>{label}</label>
+        {help && <p>{help}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Tabs({ items, active, onChange }: { items: string[]; active: string; onChange: (value: string) => void }) {
+  return (
+    <div className="settings-categories" role="tablist">
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          role="tab"
+          className="settings-tab"
+          aria-selected={item === active}
+          onClick={() => onChange(item)}
+        >
+          {item}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function TextField({ label, ...rest }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
+  return (
+    <label className="ds-field">
+      <span>{label}</span>
+      <input {...rest} />
+    </label>
+  );
+}
 
 const colorTokens = ['--plane', '--panel', '--control', '--hover', '--line', '--edge', '--text', '--muted', '--accent', '--accent-soft'];
 const typeTokens = ['--text-xs', '--text-sm', '--text-base', '--text-md', '--text-lg', '--text-xl', '--text-2xl'];

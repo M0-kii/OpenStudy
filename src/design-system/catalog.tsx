@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../design-system.css';
 import '../style.css';
 import '../bars.css';
-import { drawIcons } from '../window-ui';
+import { Pencil, Search, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import './catalog.css';
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -14,10 +14,10 @@ function Button({ variant = 'primary', className = '', ...rest }: ButtonProps) {
   return <button type="button" className={`button button-${variant} ${className}`.trim()} {...rest} />;
 }
 
-function IconButton({ icon, label, className = '', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { icon: string; label: string }) {
+function IconButton({ icon: Icon, label, className = '', ...rest }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'> & { icon: LucideIcon; label: string }) {
   return (
     <button type="button" aria-label={label} title={label} className={`icon-button ${className}`.trim()} {...rest}>
-      <i className="icon" data-lucide={icon} aria-hidden="true" />
+      <Icon className="icon" aria-hidden="true" />
     </button>
   );
 }
@@ -126,7 +126,6 @@ function Catalog() {
   const [minutes, setMinutes] = useState(25);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  useEffect(() => { drawIcons(); });
 
   return (
     <div className="ds-catalog">
@@ -182,9 +181,9 @@ function Catalog() {
           <Button disabled>Disabled</Button>
         </div>
         <div className="ds-inline">
-          <IconButton icon="search" label="Search" />
-          <IconButton icon="pencil" label="Add note" />
-          <IconButton icon="sliders-horizontal" label="Reading options" />
+          <IconButton icon={Search} label="Search" />
+          <IconButton icon={Pencil} label="Add note" />
+          <IconButton icon={SlidersHorizontal} label="Reading options" />
           <Chip>Default</Chip>
           <Chip selected>Selected</Chip>
         </div>

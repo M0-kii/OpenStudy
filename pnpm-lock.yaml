@@ -20,6 +20,9 @@ importers:
       lucide:
         specifier: ^1.0.0
         version: 1.70.0
+      lucide-react:
+        specifier: ^1.77.0
+        version: 1.77.0(@types/react@19.3.0)(react@19.3.1)
       markdown-it:
         specifier: ^14.1.0
         version: 14.3.3
@@ -632,6 +635,15 @@ packages:
   lodash@4.18.1:
     resolution: {integrity: sha512-dMInicTPVE8d1e5otfwmmjlxkZoUpiVLwyeTdUsi/Caj/gfzzblBcCE5sRHV/AsjuCmxWrte2TNGSYuCeCq+0Q==}
 
+  lucide-react@1.77.0:
+    resolution: {integrity: sha512-VS6sOi8ZUH1qm6swBL/tpI4xAhB6pFTdHvw3pfCJD+DaTJwpyynVzfOS6mdyMZ+OCdY/GMSQbqinOMOPbNSrQA==}
+    peerDependencies:
+      '@types/react': '*'
+      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   lucide@1.70.0:
     resolution: {integrity: sha512-LxPqUjt8e5PT7JuvmnKc8ECAqgkbnLG3hIi/FV2JpqWdPWLbLCoI5P3jje/Lq84uNU2kCpe2webgyFFJJ9zPAA==}
 
@@ -1187,6 +1199,12 @@ snapshots:
       lie: 3.1.1
 
   lodash@4.18.1: {}
+
+  lucide-react@1.77.0(@types/react@19.3.0)(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+    optionalDependencies:
+      '@types/react': 19.3.0
 
   lucide@1.70.0: {}
 

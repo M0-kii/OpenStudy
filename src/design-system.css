@@ -76,7 +76,8 @@ html:root {
   /* Motion */
   --duration-fast: 140ms;
   --duration-normal: 200ms;
-  --ease-out: ease-out;
+  --duration-slow: 320ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
 
   /* Layers */
   --z-raised: 1;

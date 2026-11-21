@@ -638,20 +638,58 @@ textarea { display: block; margin-top: 5px; resize: vertical; }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .reader-toolbar, .reader-session-card { transition: opacity 120ms ease-out; }
   .button, .quiet-button, .icon-button, .sidebar-button, .recent-item, .settings-tab, #contents-list button {
-    transition: background-color 140ms ease-out, border-color 140ms ease-out, color 140ms ease-out;
+    transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out),
+      color var(--duration-fast) var(--ease-out), transform 100ms var(--ease-out);
   }
   .window-menu-toggle, .reader-top-edge > span, .button-primary, .reader-edge-button {
-    transition: background-color 140ms ease-out, border-color 140ms ease-out;
+    transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out),
+      transform 100ms var(--ease-out);
   }
+  .button:not(:disabled):active, .quiet-button:not(:disabled):active, .icon-button:not(:disabled):active { transform: scale(.97); }
+  .button-primary:not(:disabled):hover { transform: translateY(-1px); }
+
+  .reader-toolbar, .reader-session-card, .window-menu, .context-menu {
+    transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+  }
+  .reader-toolbar, .window-menu, .context-menu { transform: translateY(-6px) scale(.99); }
+  .reader-session-card { transform: translateY(6px) scale(.98); transform-origin: bottom right; }
+  .window-menu, .context-menu { transform-origin: top left; }
+  .reader-toolbar[data-open], .reader-session-card[data-open], .window-menu[data-open], .context-menu[data-open] { transform: none; }
+
   .launcher:not([hidden]), .break:not([hidden]), .settings:not([hidden]) {
-    animation: screen-in 200ms ease-out both;
+    animation: screen-in var(--duration-normal) var(--ease-out) both;
   }
+  dialog[open] { animation: dialog-in var(--duration-normal) var(--ease-out) both; }
+  dialog[open]::backdrop { animation: backdrop-in var(--duration-normal) var(--ease-out) both; }
+  .battery-alert:not([hidden]) { animation: toast-in var(--duration-normal) var(--ease-out) both; }
+  .setting-row { animation: row-in var(--duration-normal) var(--ease-out) both; }
+  .setting-row:nth-child(2) { animation-delay: 30ms; }
+  .setting-row:nth-child(3) { animation-delay: 60ms; }
+  .setting-row:nth-child(4) { animation-delay: 90ms; }
+  .setting-row:nth-child(5) { animation-delay: 120ms; }
+
+  .range-slider::-webkit-slider-thumb { transition: transform 100ms var(--ease-out); }
+  .range-slider::-moz-range-thumb { transition: transform 100ms var(--ease-out); }
+  .range-slider:active::-webkit-slider-thumb { transform: scale(1.12); }
+  .range-slider:active::-moz-range-thumb { transform: scale(1.12); }
 }
 @keyframes screen-in {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
 }
 
 @media (forced-colors: active) {

@@ -1,7 +1,7 @@
 .window-bar { gap: 9px; }
 .window-brand { padding-right: 3px; }
 .window-menu-dock { position: relative; display: flex; align-items: center; }
-.window-bar .window-menu-toggle { width: 32px; border-radius: 6px; }
+.window-bar .window-menu-toggle { width: 32px; border-radius: 6px; corner-shape: squircle; }
 .window-menu-toggle .icon { width: 17px; height: 17px; }
 .window-menu {
   position: absolute;

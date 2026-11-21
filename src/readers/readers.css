@@ -29,6 +29,8 @@
   height: 100%;
   max-width: 100%;
   margin-inline: auto;
+  border-radius: 6px;
+  corner-shape: squircle;
   background: #fafafa;
   outline: 1px solid var(--line);
 }

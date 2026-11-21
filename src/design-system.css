@@ -128,6 +128,7 @@ button, select { cursor: pointer; }
 button:disabled { opacity: .45; cursor: default; }
 :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 ::selection { background: var(--accent-soft); color: var(--text); }
+input, select, textarea, kbd { corner-shape: squircle; }
 
 /* Surface recipes */
 .surface, .study-space {

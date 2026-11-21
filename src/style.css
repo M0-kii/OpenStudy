@@ -306,6 +306,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
   aspect-ratio: 3 / 4;
   border: 1px solid var(--edge);
   border-radius: 3px;
+  corner-shape: squircle;
 }
 
 .settings-back.quiet-button { min-height: 31px; margin: -5px 0 8px -9px; padding-inline: 7px; }
@@ -402,7 +403,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
 .reader-location, .zoom-level, .session-clock { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .reader-location { min-width: 0; max-width: 100%; justify-self: end; overflow: hidden; text-overflow: ellipsis; }
 .zoom-level { min-width: 42px; text-align: center; }
-.session-clock { padding: 4px 8px; border-radius: 4px; background: var(--base); color: var(--text); }
+.session-clock { padding: 4px 8px; border-radius: 4px; corner-shape: squircle; background: var(--base); color: var(--text); }
 .reader-viewport { position: relative; flex: 1; min-height: 0; overflow: auto; background: var(--base); overscroll-behavior: contain; scrollbar-color: var(--edge) transparent; }
 .reader-body { position: relative; display: flex; flex: 1; min-width: 0; min-height: 0; }
 .reader-viewport { min-width: 0; }
@@ -518,7 +519,7 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
 .context-menu .quiet-button { min-height: 33px; }
 .context-menu .quiet-button:focus { outline-offset: -2px; background: var(--hover); color: var(--text); }
 .form-error { margin-top: 10px; color: var(--text); font-size: .9rem; overflow-wrap: anywhere; }
-.reader-error { position: absolute; z-index: 2; inset: 17px 12px auto; margin: 0; padding: 7px 16px; border: 1px solid var(--line); border-radius: 5px; background: var(--control); }
+.reader-error { position: absolute; z-index: 2; inset: 17px 12px auto; margin: 0; padding: 7px 16px; border: 1px solid var(--line); border-radius: 5px; corner-shape: squircle; background: var(--control); }
 
 .break-main {
   position: relative;

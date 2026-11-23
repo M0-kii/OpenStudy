@@ -607,6 +607,18 @@ textarea { display: block; margin-top: 5px; resize: vertical; }
 .fit-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .fit-controls .button[aria-pressed='true'] { border-color: var(--accent); background: var(--control); color: var(--accent); }
 
+dialog.command-palette { top: 12vh; bottom: auto; width: min(520px, calc(100% - 32px)); padding: 8px; }
+.command-palette input { width: 100%; margin: 0; border: 0; background: transparent; }
+.command-palette input:focus-visible { outline: 0; }
+.command-results { max-height: 340px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; }
+.command-result {
+  display: flex; width: 100%; min-height: 36px; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 0 10px; border: 0; border-radius: var(--radius-md); corner-shape: squircle;
+  background: transparent; color: var(--text); text-align: start;
+}
+.command-result:hover, .command-result:focus-visible { background: var(--hover); }
+.command-result kbd { color: var(--muted); font: inherit; font-size: var(--text-xs); }
+
 @media (max-width: 950px) {
   .reader { --reader-panel-top: 116px; }
   .reader-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

@@ -72,6 +72,9 @@ const noteDialog = element<HTMLDialogElement>('note-dialog');
 const notesDialog = element<HTMLDialogElement>('notes-dialog');
 const optionsDialog = element<HTMLDialogElement>('options-dialog');
 const shortcutsDialog = element<HTMLDialogElement>('shortcuts-dialog');
+const commandPalette = element<HTMLDialogElement>('command-palette');
+const commandQuery = element<HTMLInputElement>('command-query');
+const commandResults = element('command-results');
 const linkDialog = element<HTMLDialogElement>('link-dialog');
 const linkInput = element<HTMLInputElement>('pdf-link');
 const linkError = element('link-error');
@@ -95,6 +98,7 @@ if (os === 'macos') {
   element('open-file-shortcut').textContent = '⌘O';
   element('shortcut-open').textContent = '⌘O';
   element('shortcut-find').textContent = '⌘F';
+  element('shortcut-palette').textContent = '⌘K';
 }
 drawIcons();
 
@@ -1052,6 +1056,95 @@ function showShortcuts(): void {
   button('close-shortcuts').focus();
 }
 button('close-shortcuts').addEventListener('click', () => shortcutsDialog.close());
+
+interface PaletteCommand { label: string; hint?: string; run(): void; }
+
+function paletteCommands(): PaletteCommand[] {
+  const mod = os === 'macos' ? '⌘' : 'Ctrl+';
+  const commands: PaletteCommand[] = [
+    { label: 'Open a file', hint: `${mod}O`, run: () => button('choose-file').click() },
+    { label: 'Open a PDF link', run: () => showLinkDialog() },
+    { label: 'Study space', run: () => setScreen('launcher') },
+    { label: 'Progress', run: () => setScreen('progress') },
+    { label: 'Settings', run: () => setScreen('settings') },
+    { label: 'Keyboard shortcuts', hint: '?', run: showShortcuts },
+  ];
+  if (screen === 'reader') {
+    commands.push(
+      { label: 'Find in document', hint: `${mod}F`, run: () => openFind() },
+      { label: 'Bookmark this spot', run: () => button('add-bookmark').click() },
+      { label: 'Look up later', run: () => button('review-notes').click() },
+      { label: 'Take a break', hint: 'Esc', run: () => void takeBreak() },
+    );
+  }
+  if (screen === 'break') {
+    commands.push(
+      { label: 'Resume studying', run: () => void resumeSession() },
+      { label: 'End session', run: () => void endSession() },
+    );
+  }
+  if (screen === 'launcher') {
+    for (const entry of library.slice(0, 8)) {
+      commands.push({ label: entry.title, hint: `Recent · ${kindLabel(entry.kind)}`, run: () => void openRecent(entry) });
+    }
+  }
+  return commands;
+}
+
+function renderPalette(): void {
+  const query = commandQuery.value.trim().toLowerCase();
+  const matches = paletteCommands().filter((command) => !query
+    || command.label.toLowerCase().includes(query) || command.hint?.toLowerCase().includes(query)).slice(0, 10);
+  commandResults.replaceChildren();
+  for (const command of matches) {
+    const row = document.createElement('li');
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'command-result';
+    option.setAttribute('role', 'option');
+    const label = document.createElement('span');
+    label.textContent = command.label;
+    option.append(label);
+    if (command.hint) {
+      const hint = document.createElement('kbd');
+      hint.textContent = command.hint;
+      option.append(hint);
+    }
+    option.addEventListener('click', () => {
+      commandPalette.close();
+      command.run();
+    });
+    row.append(option);
+    commandResults.append(row);
+  }
+}
+
+function openPalette(): void {
+  if (busy) return;
+  commandQuery.value = '';
+  renderPalette();
+  commandPalette.showModal();
+  commandQuery.focus();
+}
+
+commandQuery.addEventListener('input', renderPalette);
+commandQuery.addEventListener('keydown', (event) => {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    const buttons = [...commandResults.querySelectorAll<HTMLButtonElement>('button')];
+    if (!buttons.length) return;
+    const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const next = current < 0 ? (step > 0 ? 0 : buttons.length - 1) : (current + step + buttons.length) % buttons.length;
+    buttons[next].focus();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    const active = document.activeElement;
+    const target = active instanceof HTMLButtonElement && commandResults.contains(active)
+      ? active : commandResults.querySelector('button');
+    target?.click();
+  }
+});
 readerContinuousPdf.addEventListener('change', async () => {
   const previous = settings.pdfContinuous;
   const enabled = readerContinuousPdf.checked;
@@ -1485,6 +1578,11 @@ function contextCommands({ source, target }: ContextTarget): ContextCommand[] {
 bindContextMenu(element('context-menu'), contextCommands);
 document.addEventListener('keydown', (event) => {
   if (event.defaultPrevented || document.querySelector('dialog[open]')) return;
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+    event.preventDefault();
+    openPalette();
+    return;
+  }
   if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.altKey
     && !(event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) {
     event.preventDefault();

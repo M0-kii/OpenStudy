@@ -434,9 +434,15 @@
         <div><dt>Take a break</dt><dd><kbd>Esc</kbd></dd></div>
         <div><dt>Close a panel or menu</dt><dd><kbd>Esc</kbd></dd></div>
         <div><dt>Back from settings</dt><dd><kbd>Esc</kbd></dd></div>
+        <div><dt>Command palette</dt><dd><kbd id="shortcut-palette">Ctrl+K</kbd></dd></div>
         <div><dt>Show this list</dt><dd><kbd>?</kbd></dd></div>
       </dl>
       <div class="dialog-actions"><button type="button" id="close-shortcuts" class="button button-outline">Done</button></div>
+    </dialog>
+
+    <dialog id="command-palette" aria-label="Command palette" class="command-palette">
+      <input id="command-query" type="search" placeholder="Type a command or document…" autocomplete="off" spellcheck="false" aria-label="Command" />
+      <ul id="command-results" class="command-results" role="listbox" aria-label="Commands"></ul>
     </dialog>
 
     <dialog id="options-dialog" aria-labelledby="options-heading">

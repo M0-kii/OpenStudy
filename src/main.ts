@@ -1708,6 +1708,43 @@ if (os === 'browser') {
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) persist();
 });
+
+let dragDepth = 0;
+function dragHasFiles(event: DragEvent): boolean {
+  return !!event.dataTransfer && Array.from(event.dataTransfer.types).includes('Files') && !busy && screen === 'launcher';
+}
+window.addEventListener('dragenter', (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  dragDepth++;
+  element('drop-overlay').hidden = false;
+});
+window.addEventListener('dragover', (event) => {
+  if (!dragHasFiles(event)) return;
+  event.preventDefault();
+  event.dataTransfer!.dropEffect = 'copy';
+});
+window.addEventListener('dragleave', () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) element('drop-overlay').hidden = true;
+});
+window.addEventListener('drop', (event) => {
+  event.preventDefault();
+  dragDepth = 0;
+  element('drop-overlay').hidden = true;
+  const file = event.dataTransfer?.files.item(0);
+  if (!file || busy || screen !== 'launcher') return;
+  void selectDocument(async () => {
+    const name = file.name;
+    const extension = name.split('.').pop()?.toLowerCase();
+    if (!['pdf', 'epub', 'md', 'markdown'].includes(extension ?? '')) throw new Error('Choose a PDF, EPUB, or Markdown file.');
+    const nativePath = (file as File & { path?: string }).path;
+    const path = nativePath ?? `preview:${name}:${file.lastModified}:${file.size}`;
+    if (!nativePath) await desktop.cacheDocument(path, file);
+    const bytes = nativePath ? await desktop.readDocument(path) : await file.arrayBuffer();
+    return { name, path, bytes };
+  }, (error) => showError(launcherError, documentError(error, 'Choose a PDF, EPUB, or Markdown file.')));
+});
 setInterval(updateClock, 250);
 setInterval(updateBreakClock, 1000);
 setInterval(() => void checkBattery(), 30_000);

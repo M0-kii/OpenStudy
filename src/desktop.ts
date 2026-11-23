@@ -17,6 +17,7 @@ export function platform(): Platform {
 export interface Desktop {
   pickDocument(): Promise<DocumentSelection | null>;
   readDocument(path: string): Promise<ArrayBuffer>;
+  cacheDocument(path: string, file: File): Promise<void>;
   readOnlinePdf(url: string, signal?: AbortSignal): Promise<ArrayBuffer>;
   setFullscreen(value: boolean, blockAppSwitching?: boolean): Promise<void>;
   startDragging(): Promise<void>;
@@ -153,6 +154,7 @@ const native: Desktop = {
     return selected && { ...selected, bytes: await readNativeDocument(selected.path) };
   },
   readDocument: readNativeDocument,
+  async cacheDocument() {},
   readOnlinePdf: downloadNativePdf,
   setFullscreen(fullscreen, blockAppSwitching = false) {
     return invoke('set_study_fullscreen', { fullscreen, blockAppSwitching });
@@ -181,6 +183,9 @@ const browser: Desktop = {
     const file = await browserFile(path);
     if (!file) throw new Error('This file is unavailable. Choose it again to reconnect it.');
     return file.arrayBuffer();
+  },
+  async cacheDocument(path, file) {
+    await browserFile(path, file);
   },
   readOnlinePdf: downloadPdf,
   async setFullscreen(value) {

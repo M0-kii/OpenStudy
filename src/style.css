@@ -521,6 +521,21 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
 }
 .battery-alert > .icon { color: var(--muted); }
 .battery-alert .icon-button { flex: none; width: 32px; min-height: 32px; }
+.drop-overlay {
+  position: fixed;
+  z-index: 30;
+  inset: 8px;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--panel-radius);
+  corner-shape: squircle;
+  background: color-mix(in oklab, var(--plane) 82%, transparent);
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  pointer-events: none;
+}
 .context-menu {
   position: fixed;
   z-index: 9;

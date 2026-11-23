@@ -163,12 +163,14 @@
                 </div>
                 <div class="control-group note-controls" role="group" aria-label="Notes">
                   <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><i class="icon" data-lucide="pencil" aria-hidden="true"></i></button>
+                  <button type="button" id="add-bookmark" class="icon-button" title="Bookmark this spot" aria-label="Bookmark this spot"><i class="icon" data-lucide="star" aria-hidden="true"></i></button>
                   <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><i class="icon" data-lucide="notebook-pen" aria-hidden="true"></i></button>
                 </div>
                 <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
               </div>
             </header>
             <p class="reader-entry-hint"><kbd>Esc</kbd> to take a break</p>
+            <p id="bookmark-feedback" class="bookmark-feedback" role="status" hidden></p>
           </div>
 
           <p id="reader-error" class="form-error reader-error" role="alert" hidden></p>
@@ -382,6 +384,8 @@
       <h2 id="notes-heading">Look up later</h2>
       <p id="notes-empty">Anything you save while reading will appear here.</p>
       <ul id="notes-list" class="notes-list"></ul>
+      <h3 id="bookmarks-heading" hidden>Bookmarks</h3>
+      <ul id="bookmark-list" class="notes-list"></ul>
       <div class="dialog-actions">
         <button type="button" id="export-notes" class="quiet-button">Export as Markdown</button>
         <button type="button" id="close-notes" class="button button-outline">Done</button>

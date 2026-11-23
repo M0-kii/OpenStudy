@@ -716,8 +716,13 @@ async function readerAction(action: (active: Reader) => Promise<unknown>): Promi
 let notesEntry: SavedDocument | undefined;
 
 function exportNotes(): void {
-  if (!notesEntry || !notesEntry.notes.length) return;
-  const body = [`# Notes — ${notesEntry.title}`, '', ...notesEntry.notes.flatMap((note) => [`## ${note.label || 'Passage'}`, '', note.text, ''])].join('\n');
+  if (!notesEntry || !notesEntry.notes.length && !notesEntry.bookmarks?.length) return;
+  const bookmarks = notesEntry.bookmarks ?? [];
+  const body = [
+    `# Notes — ${notesEntry.title}`, '',
+    ...notesEntry.notes.flatMap((note) => [`## ${note.label || 'Passage'}`, '', note.text, '']),
+    ...(bookmarks.length ? ['## Bookmarks', '', ...bookmarks.map((bookmark) => `- ${bookmark.label}`), ''] : []),
+  ].join('\n');
   const url = URL.createObjectURL(new Blob([body], { type: 'text/markdown;charset=utf-8' }));
   const link = document.createElement('a');
   const name = notesEntry.title.normalize('NFKC').replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-|-$/g, '') || 'notes';
@@ -729,36 +734,55 @@ function exportNotes(): void {
 
 function showNotes(entry = selection?.document): void {
   if (!entry || busy || readerBusy) return;
-  notesEntry = entry;
+  const doc = entry;
+  notesEntry = doc;
   const list = element('notes-list');
   const notes = entry.notes;
   list.replaceChildren();
   element('notes-empty').hidden = notes.length > 0;
-  button('export-notes').disabled = notes.length === 0;
+  button('export-notes').disabled = notes.length === 0 && !entry.bookmarks?.length;
+
+  async function jumpTo(position: ReadingPosition, label: string): Promise<void> {
+    notesDialog.close();
+    if (screen === 'launcher') {
+      const target = position.kind === 'pdf' && doc.position?.kind === 'pdf'
+        ? { ...position, fit: doc.position.fit, zoom: doc.position.zoom }
+        : position;
+      await startSession(doc, target, selectedDocument.hidden ? settings.defaultMinutes : Number(timerSelect.value));
+      return;
+    }
+    if (screen === 'break' && !await resumeSession()) return;
+    await readerAction((active) => active.goTo(position));
+    viewport.focus();
+  }
+
+  function jumpButton(position: ReadingPosition, label: string): HTMLButtonElement {
+    const jump = document.createElement('button');
+    jump.type = 'button';
+    jump.className = 'quiet-button';
+    jump.textContent = screen === 'launcher' ? `Study from ${label}` : `Go to ${label}`;
+    jump.addEventListener('click', () => void jumpTo(position, label));
+    return jump;
+  }
+
   for (const note of notes) {
     const row = document.createElement('li');
     const text = document.createElement('p');
     text.textContent = note.text;
-    const jump = document.createElement('button');
-    jump.type = 'button';
-    jump.className = 'quiet-button';
-    jump.textContent = screen === 'launcher' ? `Study from ${note.label}` : `Go to ${note.label}`;
-    jump.addEventListener('click', async () => {
-      notesDialog.close();
-      if (screen === 'launcher') {
-        const position = note.position.kind === 'pdf' && entry.position?.kind === 'pdf'
-          ? { ...note.position, fit: entry.position.fit, zoom: entry.position.zoom }
-          : note.position;
-        await startSession(entry, position, selectedDocument.hidden ? settings.defaultMinutes : Number(timerSelect.value));
-        return;
-      }
-      if (screen === 'break' && !await resumeSession()) return;
-      await readerAction((active) => active.goTo(note.position));
-      viewport.focus();
-    });
-    row.append(text, jump);
+    row.append(text, jumpButton(note.position, note.label));
     list.append(row);
   }
+
+  const bookmarks = entry.bookmarks ?? [];
+  const bookmarkList = element('bookmark-list');
+  bookmarkList.replaceChildren();
+  element('bookmarks-heading').hidden = bookmarks.length === 0;
+  for (const bookmark of bookmarks) {
+    const row = document.createElement('li');
+    row.append(jumpButton(bookmark.position, bookmark.label));
+    bookmarkList.append(row);
+  }
+
   notesDialog.showModal();
 }
 
@@ -1143,6 +1167,28 @@ const findLife = new FindLifecycle({
 function findDocument(query: string, direction: FindDirection): void {
   void findLife.run(query, direction);
 }
+
+let bookmarkFeedbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+function bookmarkFeedback(message: string): void {
+  const node = element('bookmark-feedback');
+  node.textContent = message;
+  node.hidden = false;
+  clearTimeout(bookmarkFeedbackTimer);
+  bookmarkFeedbackTimer = setTimeout(() => { node.hidden = true; }, 1600);
+}
+
+button('add-bookmark').addEventListener('click', () => {
+  if (!selection || !reading || !reader || busy || readerBusy) return;
+  const bookmarks = selection.document.bookmarks ??= [];
+  bookmarks.push({ position: { ...reading.position }, label: reading.label, createdAt: Date.now() });
+  if (!persist()) {
+    bookmarks.pop();
+    bookmarkFeedback('Could not save the bookmark.');
+    return;
+  }
+  bookmarkFeedback('Bookmark saved');
+});
 
 const noteText = element<HTMLTextAreaElement>('note-text');
 button('add-note').addEventListener('click', () => {

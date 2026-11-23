@@ -7,6 +7,12 @@ export interface StudyNote {
   label: string;
 }
 
+export interface Bookmark {
+  position: ReadingPosition;
+  label: string;
+  createdAt: number;
+}
+
 export interface SavedDocument {
   path: string;
   name: string;
@@ -17,6 +23,7 @@ export interface SavedDocument {
   label?: string;
   updatedAt: number;
   notes: StudyNote[];
+  bookmarks?: Bookmark[];
 }
 
 const storageKey = 'openstudy.library.v1';
@@ -38,8 +45,23 @@ function readDocument(raw: unknown): SavedDocument | undefined {
     readNotes.push({ text: note.text, position, label: typeof note.label === 'string' ? note.label : '' });
   }
 
+  const bookmarks: Bookmark[] = [];
+  if (Array.isArray(value.bookmarks)) {
+    for (const rawBookmark of value.bookmarks) {
+      if (!rawBookmark || typeof rawBookmark !== 'object') continue;
+      const bookmark = rawBookmark as Record<string, unknown>;
+      const position = readPosition(bookmark.position, kind);
+      if (!position) continue;
+      bookmarks.push({
+        position,
+        label: typeof bookmark.label === 'string' ? bookmark.label : '',
+        createdAt: typeof bookmark.createdAt === 'number' && Number.isFinite(bookmark.createdAt) ? bookmark.createdAt : 0,
+      });
+    }
+  }
+
   return {
-    path, name, title, kind, updatedAt, notes: readNotes,
+    path, name, title, kind, updatedAt, notes: readNotes, bookmarks,
     ...(value.online === true ? { online: true as const } : {}),
     position: readPosition(value.position, kind),
     label: typeof value.label === 'string' ? value.label : undefined,

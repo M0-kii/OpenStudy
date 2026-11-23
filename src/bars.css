@@ -99,6 +99,21 @@
 }
 .reader[data-entry-hint] .reader-toolbar[data-open] + .reader-entry-hint { display: block; }
 .reader-entry-hint kbd { color: var(--text); font: inherit; font-weight: 600; }
+.bookmark-feedback {
+  position: absolute;
+  inset: 100% auto auto 50%;
+  margin-top: 24px;
+  padding: 5px 10px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-sm);
+  corner-shape: squircle;
+  background: var(--panel);
+  box-shadow: var(--popup-shadow);
+  color: var(--text);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+#bookmarks-heading { margin-top: 14px; color: var(--muted); font-size: var(--text-sm); }
 
 .reader-bottom { inset: auto 16px 14px; }
 .reader-bottom-right { gap: 8px; }

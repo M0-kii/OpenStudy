@@ -128,7 +128,19 @@ body:has(.reader:not([hidden])) .window-bar { display: none; }
   overflow: clip;
   overflow-clip-margin: 4px;
 }
-.launcher, .break, .settings { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.launcher, .break, .settings, .progress { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.progress-body { padding: var(--space-5) var(--workspace-padding); overflow: auto; }
+.progress-body h2 { margin-bottom: var(--space-3); font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.progress-week { display: flex; align-items: end; gap: var(--space-2); height: 160px; margin-bottom: var(--space-6); }
+.progress-day { display: flex; flex: 1; min-width: 0; height: 100%; flex-direction: column; align-items: center; gap: 4px; }
+.progress-track { display: flex; flex: 1; width: 100%; align-items: end; overflow: hidden; border-radius: var(--radius-md); corner-shape: squircle; background: var(--control); }
+.progress-fill { width: 100%; border-radius: var(--radius-md); corner-shape: squircle; background: var(--accent); }
+.progress-label, .progress-value { font-size: var(--text-xs); color: var(--muted); }
+.progress-value { color: var(--text); font-variant-numeric: tabular-nums; }
+.progress-documents { margin: 0; padding: 0; list-style: none; }
+.progress-documents li { display: flex; justify-content: space-between; gap: var(--space-4); padding: var(--space-2) 0; }
+.progress-documents li + li { border-top: 1px solid var(--line); }
+.progress-documents span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
 .workspace-heading { padding: 29px var(--workspace-padding) 22px; border-bottom: 1px solid var(--line); }
 .workspace-heading h1 { font-size: 1.75rem; line-height: 1.15; font-weight: 650; letter-spacing: -.04em; }
 .workspace-empty {
@@ -673,7 +685,7 @@ textarea { display: block; margin-top: 5px; resize: vertical; }
   .window-menu, .context-menu { transform-origin: top left; }
   .reader-toolbar[data-open], .reader-session-card[data-open], .window-menu[data-open], .context-menu[data-open] { transform: none; }
 
-  .launcher:not([hidden]), .break:not([hidden]), .settings:not([hidden]) {
+  .launcher:not([hidden]), .break:not([hidden]), .settings:not([hidden]), .progress:not([hidden]) {
     animation: screen-in var(--duration-normal) var(--ease-out) both;
   }
   dialog[open] { animation: dialog-in var(--duration-normal) var(--ease-out) both; }

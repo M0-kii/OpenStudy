@@ -47,6 +47,7 @@
         <div id="sidebar-content" class="sidebar-content">
           <nav class="sidebar-actions" aria-label="Workspace">
             <button type="button" id="nav-library" class="sidebar-button" aria-controls="launcher-screen" aria-current="page" aria-label="Study space" title="Study space"><i class="icon" data-lucide="panel-left" aria-hidden="true"></i><span class="sidebar-label">Study space</span></button>
+            <button type="button" id="nav-progress" class="sidebar-button" aria-controls="progress-screen" aria-label="Progress" title="Progress"><i class="icon" data-lucide="chart-column" aria-hidden="true"></i><span class="sidebar-label">Progress</span></button>
           </nav>
           <section class="sidebar-library" aria-labelledby="recent-heading">
             <h2 id="recent-heading">Recent files</h2>
@@ -216,6 +217,17 @@
               </div>
               <button type="button" id="next-page" class="icon-button reader-edge-button" title="Next page" aria-label="Next page"><i class="icon" data-lucide="chevron-right" aria-hidden="true"></i></button>
             </div>
+          </div>
+        </section>
+
+        <section id="progress-screen" class="progress" aria-labelledby="progress-heading" hidden>
+          <header class="workspace-heading"><h1 id="progress-heading" tabindex="-1">Progress</h1></header>
+          <div class="progress-body">
+            <h2>Last 7 days</h2>
+            <p id="progress-empty" class="settings-note" hidden>No reading time recorded yet.</p>
+            <div id="progress-week" class="progress-week"></div>
+            <h2>By document</h2>
+            <ul id="progress-documents" class="progress-documents"></ul>
           </div>
         </section>
 

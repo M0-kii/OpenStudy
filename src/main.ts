@@ -4,6 +4,7 @@ import './bars.css';
 import { playLowBatteryChime, primeAlarm } from './alarm';
 import { batteryAlertLevel } from './battery';
 import { desktop, platform, type DocumentSelection } from './desktop';
+import { addReading, lastDays, loadHistory, saveHistory } from './history.ts';
 import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { FindLifecycle } from './readers/find-lifecycle.ts';
@@ -24,12 +25,13 @@ function button(id: string): HTMLButtonElement {
   return element<HTMLButtonElement>(id);
 }
 
-type Screen = 'launcher' | 'reader' | 'break' | 'settings';
+type Screen = 'launcher' | 'reader' | 'break' | 'settings' | 'progress';
 const screens: Record<Screen, HTMLElement> = {
   launcher: element('launcher-screen'),
   reader: element('reader-screen'),
   break: element('break-screen'),
   settings: element('settings-screen'),
+  progress: element('progress-screen'),
 };
 const workspace = document.querySelector<HTMLElement>('.workspace-shell');
 const viewport = element('reader-viewport');
@@ -130,6 +132,8 @@ let missingDocument: SavedDocument | undefined;
 let replacementLink: SavedDocument | undefined;
 let onlineRequest: AbortController | undefined;
 let retryOnline: (() => void) | undefined;
+let history = loadHistory();
+let readingSeconds = 0;
 let batteryCheckPending = false;
 let batteryLevel = 0;
 let dismissedBatteryLevel = 0;
@@ -173,6 +177,10 @@ function setScreen(next: Screen): void {
   else libraryNav.removeAttribute('aria-current');
   if (next === 'settings') settingsNav.setAttribute('aria-current', 'page');
   else settingsNav.removeAttribute('aria-current');
+  const progressNav = button('nav-progress');
+  if (next === 'progress') progressNav.setAttribute('aria-current', 'page');
+  else progressNav.removeAttribute('aria-current');
+  if (next === 'progress') renderProgress();
   syncControls();
 }
 
@@ -188,6 +196,7 @@ function syncControls(): void {
   retryOnlineButton.disabled = !canChoose;
   for (const row of recentList.querySelectorAll<HTMLButtonElement>('button')) row.disabled = !canChoose;
   button('nav-library').disabled = busy;
+  button('nav-progress').disabled = busy;
   button('open-settings').disabled = busy;
   button('close-settings').disabled = busy;
   button('start-session').disabled = busy || !selection;
@@ -786,6 +795,48 @@ function showNotes(entry = selection?.document): void {
   notesDialog.showModal();
 }
 
+function renderProgress(): void {
+  const days = lastDays(history);
+  const max = Math.max(1, ...days.map((day) => day.seconds));
+  const week = element('progress-week');
+  week.replaceChildren();
+  for (const day of days) {
+    const column = document.createElement('div');
+    column.className = 'progress-day';
+    const track = document.createElement('span');
+    track.className = 'progress-track';
+    const fill = document.createElement('span');
+    fill.className = 'progress-fill';
+    fill.style.height = `${Math.round((day.seconds / max) * 100)}%`;
+    track.append(fill);
+    const label = document.createElement('span');
+    label.className = 'progress-label';
+    label.textContent = new Date(`${day.date}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short' });
+    const value = document.createElement('span');
+    value.className = 'progress-value';
+    value.textContent = day.seconds ? `${Math.round(day.seconds / 60)}m` : '–';
+    column.append(track, label, value);
+    week.append(column);
+  }
+  element('progress-empty').hidden = days.some((day) => day.seconds > 0);
+
+  const totals = new Map<string, number>();
+  for (const day of lastDays(history, 365)) {
+    for (const [name, seconds] of Object.entries(day.documents)) totals.set(name, (totals.get(name) ?? 0) + seconds);
+  }
+  const list = element('progress-documents');
+  list.replaceChildren();
+  for (const [name, seconds] of [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+    const row = document.createElement('li');
+    const title = document.createElement('span');
+    title.textContent = name;
+    const time = document.createElement('span');
+    time.textContent = `${Math.round(seconds / 60)} min`;
+    row.append(title, time);
+    list.append(row);
+  }
+}
+
 function notificationCopy(): string {
   switch (os) {
     case 'windows':
@@ -1252,6 +1303,11 @@ button('open-settings').addEventListener('click', () => {
   element('settings-heading').focus();
 });
 button('close-settings').addEventListener('click', returnFromSettings);
+button('nav-progress').addEventListener('click', () => {
+  if (busy || screen === 'reader') return;
+  setScreen('progress');
+  element('progress-heading').focus();
+});
 button('nav-library').addEventListener('click', () => {
   if (busy || screen === 'reader') return;
   const target = screen === 'settings' ? settingsReturn : screen;
@@ -1426,6 +1482,10 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     returnFromSettings();
   }
+  if (event.key === 'Escape' && screen === 'progress') {
+    event.preventDefault();
+    setScreen('launcher');
+  }
   if (event.key.toLowerCase() === 'o' && (event.ctrlKey || event.metaKey) && screen === 'launcher') {
     event.preventDefault();
     button('choose-file').click();
@@ -1442,6 +1502,19 @@ document.addEventListener('visibilitychange', () => {
 });
 setInterval(updateClock, 250);
 setInterval(() => void checkBattery(), 30_000);
+setInterval(() => {
+  if (screen !== 'reader' || document.hidden || !reading) return;
+  readingSeconds += 15;
+  if (readingSeconds < 60) return;
+  const minutes = Math.floor(readingSeconds / 60);
+  readingSeconds -= minutes * 60;
+  history = addReading(history, minutes * 60, selection?.document.title ?? 'Unknown');
+  try {
+    saveHistory(history);
+  } catch (error) {
+    console.error(error);
+  }
+}, 15_000);
 
 setScreen('launcher');
 try {

@@ -1,5 +1,5 @@
 import {
-  createIcons, BatteryLow, ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, Keyboard, Link2, List, LogOut, Minus,
+  createIcons, BatteryLow, ChartColumn, ChevronLeft, ChevronRight, Copy, Ellipsis, FileText, FolderOpen, Keyboard, Link2, List, LogOut, Minus,
   NotebookPen, PanelLeft, PanelLeftClose, PanelLeftOpen, Pause, Pencil, Plus, Search, Settings2, SlidersHorizontal, Square, Star, X,
 } from 'lucide';
 

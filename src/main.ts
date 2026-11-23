@@ -4,8 +4,8 @@ import './bars.css';
 import { playLowBatteryChime, primeAlarm } from './alarm';
 import { batteryAlertLevel } from './battery';
 import { desktop, platform, type DocumentSelection } from './desktop';
-import { addReading, lastDays, loadHistory, saveHistory } from './history.ts';
-import { loadLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
+import { addReading, lastDays, loadHistory, normalizeHistory, saveHistory } from './history.ts';
+import { loadLibrary, normalizeLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { FindLifecycle } from './readers/find-lifecycle.ts';
 import { setPaper } from './paper.ts';
@@ -1292,6 +1292,55 @@ continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdf
 blockAppSwitching.addEventListener('change', () => changeSettings({ ...settings, blockAppSwitching: blockAppSwitching.checked }));
 batteryAlerts.addEventListener('change', () => changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked }));
 batteryAlarm.addEventListener('change', () => changeSettings({ ...settings, batteryAlarm: batteryAlarm.checked }));
+
+function downloadJson(name: string, data: unknown): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+button('export-library').addEventListener('click', () => {
+  downloadJson('openstudy-library.json', { version: 1, library, settings, history });
+  element('library-backup-status').textContent = 'Export saved.';
+});
+
+const importFile = element<HTMLInputElement>('import-library-file');
+button('import-library').addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', async () => {
+  const file = importFile.files?.item(0);
+  if (!file) return;
+  const status = element('library-backup-status');
+  try {
+    const parsed: unknown = JSON.parse(await file.text());
+    const payload = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+    const incoming = normalizeLibrary(payload.library);
+    const known = new Set(library.map((entry) => entry.path));
+    const added = incoming.filter((entry) => !known.has(entry.path));
+    library = [...library, ...added];
+    saveLibrary(library);
+
+    const byDate = new Map(history.map((day) => [day.date, day]));
+    for (const day of normalizeHistory(payload.history)) {
+      const existing = byDate.get(day.date);
+      if (existing) {
+        const documents = { ...existing.documents };
+        for (const [name, seconds] of Object.entries(day.documents)) documents[name] = (documents[name] ?? 0) + seconds;
+        byDate.set(day.date, { date: day.date, seconds: existing.seconds + day.seconds, documents });
+      } else byDate.set(day.date, day);
+    }
+    history = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-365);
+    saveHistory(history);
+
+    renderLibrary();
+    status.textContent = `Imported ${added.length} document${added.length === 1 ? '' : 's'}.`;
+  } catch {
+    status.textContent = 'That file could not be read as a library export.';
+  }
+  importFile.value = '';
+});
 sidebarToggle.addEventListener('click', () => {
   const errorNode = screen === 'settings' ? settingsError : screen === 'break' ? breakError : launcherError;
   changeSettings({ ...settings, sidebarCollapsed: !settings.sidebarCollapsed }, errorNode);

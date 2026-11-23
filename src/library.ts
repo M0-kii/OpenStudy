@@ -68,12 +68,15 @@ function readDocument(raw: unknown): SavedDocument | undefined {
   };
 }
 
+export function normalizeLibrary(raw: unknown): SavedDocument[] {
+  if (!Array.isArray(raw)) throw new Error('Invalid library');
+  return raw.map(readDocument).filter((entry): entry is SavedDocument => Boolean(entry));
+}
+
 export function loadLibrary(): SavedDocument[] {
   const saved = localStorage.getItem(storageKey);
   if (!saved) return [];
-  const library: unknown = JSON.parse(saved);
-  if (!Array.isArray(library)) throw new Error('Invalid library');
-  return library.map(readDocument).filter((entry): entry is SavedDocument => Boolean(entry));
+  return normalizeLibrary(JSON.parse(saved));
 }
 
 export function saveLibrary(library: SavedDocument[]): void {

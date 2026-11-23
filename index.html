@@ -256,6 +256,7 @@
             <button type="button" id="settings-tab-appearance" class="quiet-button settings-tab" role="tab" aria-selected="true" aria-controls="settings-appearance">Appearance</button>
             <button type="button" id="settings-tab-sessions" class="quiet-button settings-tab" role="tab" aria-selected="false" aria-controls="settings-sessions" tabindex="-1">Study sessions</button>
             <button type="button" id="settings-tab-notifications" class="quiet-button settings-tab" role="tab" aria-selected="false" aria-controls="settings-notifications" tabindex="-1">Notifications</button>
+            <button type="button" id="settings-tab-data" class="quiet-button settings-tab" role="tab" aria-selected="false" aria-controls="settings-data" tabindex="-1">Data</button>
           </div>
           <section id="settings-appearance" class="settings-list" role="tabpanel" aria-labelledby="settings-tab-appearance" tabindex="0">
             <div class="setting-row">
@@ -353,6 +354,25 @@
               </div>
               <input type="checkbox" id="battery-alarm" aria-describedby="battery-alarm-help" checked />
             </div>
+          </section>
+          <section id="settings-data" class="settings-list" role="tabpanel" aria-labelledby="settings-tab-data" tabindex="0" hidden>
+            <p class="settings-note">Everything stays on this device. Export a copy to move it to another machine.</p>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label>Export library</label>
+                <p>Save documents, notes, bookmarks and reading history as one JSON file.</p>
+              </div>
+              <button type="button" id="export-library" class="button button-outline">Export</button>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label>Import library</label>
+                <p>Add documents from an earlier export. Existing files are kept.</p>
+              </div>
+              <button type="button" id="import-library" class="button button-outline">Import</button>
+            </div>
+            <input type="file" id="import-library-file" accept=".json,application/json" hidden />
+            <p id="library-backup-status" class="settings-note" role="status"></p>
           </section>
         </section>
       </main>

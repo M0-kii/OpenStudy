@@ -24,13 +24,15 @@ function readEntry(raw: unknown): DayEntry | undefined {
   return { date: value.date, seconds: value.seconds, documents };
 }
 
+export function normalizeHistory(raw: unknown): DayEntry[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(readEntry).filter((entry): entry is DayEntry => Boolean(entry));
+}
+
 export function loadHistory(storage: Pick<Storage, 'getItem'> = localStorage): DayEntry[] {
   try {
     const saved = storage.getItem(key);
-    if (!saved) return [];
-    const parsed: unknown = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map(readEntry).filter((entry): entry is DayEntry => Boolean(entry));
+    return saved ? normalizeHistory(JSON.parse(saved)) : [];
   } catch {
     return [];
   }

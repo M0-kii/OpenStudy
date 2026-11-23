@@ -10,6 +10,8 @@ export interface SettingsControls {
   motionSelect: HTMLSelectElement;
   continuousPdf: HTMLInputElement;
   readerContinuousPdf: HTMLInputElement;
+  breakMinutes: HTMLSelectElement;
+  longBreakEvery: HTMLSelectElement;
   blockAppSwitching: HTMLInputElement;
   batteryAlerts: HTMLInputElement;
   batteryAlarm: HTMLInputElement;
@@ -31,6 +33,8 @@ export function applySettings(settings: StudySettings, controls: SettingsControl
   controls.motionSelect.value = settings.motion;
   controls.continuousPdf.checked = settings.pdfContinuous;
   controls.readerContinuousPdf.checked = settings.pdfContinuous;
+  controls.breakMinutes.value = String(settings.breakMinutes);
+  controls.longBreakEvery.value = String(settings.longBreakEvery);
   controls.blockAppSwitching.checked = settings.blockAppSwitching;
   controls.batteryAlerts.checked = settings.batteryAlerts;
   controls.batteryAlarm.checked = settings.batteryAlarm;

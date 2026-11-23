@@ -54,6 +54,8 @@ const timerSelect = element<HTMLSelectElement>('session-minutes');
 const defaultMinutes = element<HTMLSelectElement>('default-minutes');
 const showCountdown = element<HTMLInputElement>('show-countdown');
 const continuousPdf = element<HTMLInputElement>('continuous-pdf');
+const breakMinutes = element<HTMLSelectElement>('break-minutes');
+const longBreakEvery = element<HTMLSelectElement>('long-break-every');
 const blockAppSwitching = element<HTMLInputElement>('block-app-switching');
 const batteryAlerts = element<HTMLInputElement>('battery-alerts');
 const batteryAlarm = element<HTMLInputElement>('battery-alarm');
@@ -105,7 +107,7 @@ drawIcons();
 
 const controls: SettingsControls = {
   defaultMinutes, timerSelect, showCountdown, themeSelect, accentSelect, paperSelect, motionSelect,
-  continuousPdf, readerContinuousPdf, blockAppSwitching, batteryAlerts, batteryAlarm, sidebarToggle, workspace,
+  continuousPdf, readerContinuousPdf, breakMinutes, longBreakEvery, blockAppSwitching, batteryAlerts, batteryAlarm, sidebarToggle, workspace,
   sidebarCollapseIcon: element('sidebar-collapse-icon'),
   sidebarExpandIcon: element('sidebar-expand-icon'),
   setTheme: (theme) => applyAppearance(theme),
@@ -131,6 +133,8 @@ let readerBusy = false;
 let queuedPdfPage: number | undefined;
 let saveDelay: ReturnType<typeof setTimeout> | undefined;
 let announced = false;
+let completedBreaks = 0;
+let breakDeadline: number | null = null;
 let canSave = true;
 let lastDocument: SavedDocument | undefined;
 let missingDocument: SavedDocument | undefined;
@@ -489,6 +493,7 @@ function updateClock(): void {
   const announcement = document.getElementById('timer-announcement');
   if (remaining === 0 && !announced) {
     announced = true;
+    completedBreaks++;
     if (announcement) announcement.textContent = 'Study time is up.';
   } else if (remaining === undefined && announcement) {
     announcement.textContent = '';
@@ -635,6 +640,22 @@ async function startSession(entry = selection?.document, position = entry?.posit
   }
 }
 
+function updateBreakClock(): void {
+  const clock = element('break-clock');
+  if (breakDeadline === null) {
+    clock.hidden = true;
+    return;
+  }
+  const left = Math.max(0, breakDeadline - Date.now());
+  if (!left) {
+    breakDeadline = null;
+    clock.textContent = 'Break over';
+    element('timer-announcement').textContent = 'Break over.';
+    return;
+  }
+  clock.textContent = `Break ${clockLabel(left)} remaining`;
+}
+
 async function takeBreak(): Promise<void> {
   if (screen !== 'reader' || busy || readerBusy) return;
   setBusy(true);
@@ -647,6 +668,10 @@ async function takeBreak(): Promise<void> {
     setScreen('break');
     if (!saved) showError(breakError, 'OpenStudy could not save your reading progress.');
     updateClock();
+    const long = settings.longBreakEvery > 0 && completedBreaks > 0 && completedBreaks % settings.longBreakEvery === 0;
+    const minutes = settings.breakMinutes * (long ? 3 : 1);
+    breakDeadline = minutes > 0 ? Date.now() + minutes * 60_000 : null;
+    updateBreakClock();
     void checkBattery();
   } catch (error) {
     console.error(error);
@@ -660,6 +685,7 @@ async function takeBreak(): Promise<void> {
 
 async function resumeSession(): Promise<boolean> {
   if (screen !== 'break' || busy) return false;
+  breakDeadline = null;
   primeAlarm();
   setBusy(true);
   showError(breakError);
@@ -1415,6 +1441,8 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () 
   if (settings.theme === 'system') applyAppearance('system');
 });
 continuousPdf.addEventListener('change', () => changeSettings({ ...settings, pdfContinuous: continuousPdf.checked }));
+breakMinutes.addEventListener('change', () => changeSettings({ ...settings, breakMinutes: Number(breakMinutes.value) }));
+longBreakEvery.addEventListener('change', () => changeSettings({ ...settings, longBreakEvery: Number(longBreakEvery.value) }));
 blockAppSwitching.addEventListener('change', () => changeSettings({ ...settings, blockAppSwitching: blockAppSwitching.checked }));
 batteryAlerts.addEventListener('change', () => changeSettings({ ...settings, batteryAlerts: batteryAlerts.checked }));
 batteryAlarm.addEventListener('change', () => changeSettings({ ...settings, batteryAlarm: batteryAlarm.checked }));
@@ -1681,6 +1709,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) persist();
 });
 setInterval(updateClock, 250);
+setInterval(updateBreakClock, 1000);
 setInterval(() => void checkBattery(), 30_000);
 setInterval(() => {
   if (screen !== 'reader' || document.hidden || !reading) return;

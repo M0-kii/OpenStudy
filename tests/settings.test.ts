@@ -12,6 +12,7 @@ test('study settings persist validated values and recover from malformed storage
   const defaults = {
     defaultMinutes: 0, showCountdown: true, pdfContinuous: false, sidebarCollapsed: false,
     theme: 'dark', accent: 'ochre', paper: 'paper', motion: 'full',
+    breakMinutes: 5, longBreakEvery: 4,
     blockAppSwitching: false, batteryAlerts: true, batteryAlarm: true,
   };
   assert.deepEqual(loadSettings(storage), defaults);
@@ -19,6 +20,7 @@ test('study settings persist validated values and recover from malformed storage
   const changed = {
     defaultMinutes: 45, showCountdown: false, pdfContinuous: true, sidebarCollapsed: true,
     theme: 'system', accent: 'sage', paper: 'sepia', motion: 'reduced',
+    breakMinutes: 15, longBreakEvery: 2,
     blockAppSwitching: true, batteryAlerts: false, batteryAlarm: false,
   } as const;
   saveSettings(changed, storage);

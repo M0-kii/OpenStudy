@@ -17,6 +17,8 @@ export interface StudySettings {
   accent: Accent;
   paper: Paper;
   motion: Motion;
+  breakMinutes: number;
+  longBreakEvery: number;
   blockAppSwitching: boolean;
   batteryAlerts: boolean;
   batteryAlarm: boolean;
@@ -32,15 +34,19 @@ const defaults: StudySettings = {
   accent: 'ochre',
   paper: 'paper',
   motion: 'full',
+  breakMinutes: 5,
+  longBreakEvery: 4,
   blockAppSwitching: false,
   batteryAlerts: true,
   batteryAlarm: true,
 };
 const minutePresets = [0, 15, 25, 45, 60];
+const breakPresets = [0, 5, 10, 15];
+const cyclePresets = [0, 2, 3, 4];
 
 function normalize(value: unknown): StudySettings {
   if (value === null || typeof value !== 'object') return { ...defaults };
-  const { defaultMinutes, showCountdown, pdfContinuous, sidebarCollapsed, theme, accent, paper, motion, blockAppSwitching, batteryAlerts, batteryAlarm } = value as Partial<StudySettings>;
+  const { defaultMinutes, showCountdown, pdfContinuous, sidebarCollapsed, theme, accent, paper, motion, breakMinutes, longBreakEvery, blockAppSwitching, batteryAlerts, batteryAlarm } = value as Partial<StudySettings>;
   return {
     defaultMinutes: typeof defaultMinutes === 'number' && minutePresets.includes(defaultMinutes) ? defaultMinutes : defaults.defaultMinutes,
     showCountdown: typeof showCountdown === 'boolean' ? showCountdown : defaults.showCountdown,
@@ -50,6 +56,8 @@ function normalize(value: unknown): StudySettings {
     accent: accents.includes(accent as Accent) ? accent as Accent : defaults.accent,
     paper: papers.includes(paper as Paper) ? paper as Paper : defaults.paper,
     motion: motions.includes(motion as Motion) ? motion as Motion : defaults.motion,
+    breakMinutes: breakPresets.includes(breakMinutes as number) ? breakMinutes as number : defaults.breakMinutes,
+    longBreakEvery: cyclePresets.includes(longBreakEvery as number) ? longBreakEvery as number : defaults.longBreakEvery,
     blockAppSwitching: blockAppSwitching === true,
     batteryAlerts: batteryAlerts !== false,
     batteryAlarm: batteryAlarm !== false,

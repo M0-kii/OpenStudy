@@ -332,6 +332,30 @@
               </div>
               <input type="checkbox" id="continuous-pdf" aria-describedby="continuous-pdf-help" />
             </div>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label for="break-minutes">Break length</label>
+                <p id="break-minutes-help">Counts down on the paused screen. Off shows no timer.</p>
+              </div>
+              <select id="break-minutes" aria-describedby="break-minutes-help">
+                <option value="0">Off</option>
+                <option value="5">5 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="15">15 minutes</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div class="setting-copy">
+                <label for="long-break-every">Long break every</label>
+                <p id="long-break-every-help">Every nth break lasts three times as long. Off uses the same length.</p>
+              </div>
+              <select id="long-break-every" aria-describedby="long-break-every-help">
+                <option value="0">Off</option>
+                <option value="2">2 breaks</option>
+                <option value="3">3 breaks</option>
+                <option value="4">4 breaks</option>
+              </select>
+            </div>
             <div id="windows-focus-setting" class="setting-row" hidden>
               <div class="setting-copy">
                 <label for="block-app-switching">Block Alt+Tab while reading</label>

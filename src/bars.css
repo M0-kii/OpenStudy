@@ -114,6 +114,10 @@
   white-space: nowrap;
 }
 #bookmarks-heading { margin-top: 14px; color: var(--muted); font-size: var(--text-sm); }
+.highlight-dot { display: block; width: 14px; height: 14px; border-radius: 4px; corner-shape: squircle; background: var(--dot); }
+.highlight-dot[data-highlight='sage'] { --dot: #86a891; }
+.highlight-dot[data-highlight='rose'] { --dot: #c98f8f; }
+.highlight-dot[data-highlight='slate'] { --dot: #8fa6bd; }
 
 .reader-bottom { inset: auto 16px 14px; }
 .reader-bottom-right { gap: 8px; }

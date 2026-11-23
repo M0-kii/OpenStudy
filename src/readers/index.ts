@@ -1,3 +1,4 @@
+import type { HighlightColor, SavedHighlight } from '../highlights.ts';
 import { readPosition } from '../position.ts';
 
 export type DocumentKind = 'pdf' | 'epub' | 'markdown';
@@ -69,6 +70,7 @@ export interface Reader {
   contents(): Promise<readonly ReaderContentsEntry[]>;
   find(query: string, direction?: FindDirection, onProgress?: (result: FindResult) => void): Promise<FindResult>;
   clearFind(): void;
+  highlight(color: HighlightColor): Promise<void>;
   destroy(): void;
 }
 
@@ -92,18 +94,19 @@ export async function openReader(
   onChange: (state: ReaderState) => void,
   signal?: AbortSignal,
   pdfContinuous = false,
+  onHighlight?: (highlight: SavedHighlight) => void,
 ): Promise<Reader> {
   if (kind === 'pdf') {
     const { openPdf } = await import('./pdf');
-    return openPdf(host, bytes, readPosition(initial, 'pdf'), onChange, signal, pdfContinuous);
+    return openPdf(host, bytes, readPosition(initial, 'pdf'), onChange, signal, pdfContinuous, onHighlight);
   }
   if (kind === 'markdown') {
     const { openMarkdown } = await import('./markdown');
-    return openMarkdown(host, bytes, readPosition(initial, 'markdown'), onChange, signal);
+    return openMarkdown(host, bytes, readPosition(initial, 'markdown'), onChange, signal, onHighlight);
   }
 
   const { openEpub } = await import('./epub');
-  return openEpub(host, bytes, readPosition(initial, 'epub'), onChange, signal);
+  return openEpub(host, bytes, readPosition(initial, 'epub'), onChange, signal, onHighlight);
 }
 
 export async function previewDocument(kind: DocumentKind, bytes: ArrayBuffer, signal?: AbortSignal): Promise<DocumentPreview> {

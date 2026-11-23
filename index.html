@@ -165,6 +165,9 @@
                 <div class="control-group note-controls" role="group" aria-label="Notes">
                   <button type="button" id="add-note" class="icon-button" title="Save for later" aria-label="Save for later"><i class="icon" data-lucide="pencil" aria-hidden="true"></i></button>
                   <button type="button" id="add-bookmark" class="icon-button" title="Bookmark this spot" aria-label="Bookmark this spot"><i class="icon" data-lucide="star" aria-hidden="true"></i></button>
+                  <button type="button" class="icon-button highlight-button" data-highlight="sage" title="Highlight in sage" aria-label="Highlight in sage"><span class="highlight-dot" data-highlight="sage"></span></button>
+                  <button type="button" class="icon-button highlight-button" data-highlight="rose" title="Highlight in rose" aria-label="Highlight in rose"><span class="highlight-dot" data-highlight="rose"></span></button>
+                  <button type="button" class="icon-button highlight-button" data-highlight="slate" title="Highlight in slate" aria-label="Highlight in slate"><span class="highlight-dot" data-highlight="slate"></span></button>
                   <button type="button" id="review-notes" class="icon-button" title="Look up later" aria-label="Look up later"><i class="icon" data-lucide="notebook-pen" aria-hidden="true"></i></button>
                 </div>
                 <button type="button" id="reader-options" class="icon-button" title="Reading options" aria-label="Reading options"><i class="icon" data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
@@ -418,6 +421,8 @@
       <ul id="notes-list" class="notes-list"></ul>
       <h3 id="bookmarks-heading" hidden>Bookmarks</h3>
       <ul id="bookmark-list" class="notes-list"></ul>
+      <h3 id="highlights-heading" hidden>Highlights</h3>
+      <ul id="highlight-list" class="notes-list"></ul>
       <div class="dialog-actions">
         <button type="button" id="export-notes" class="quiet-button">Export as Markdown</button>
         <button type="button" id="close-notes" class="button button-outline">Done</button>

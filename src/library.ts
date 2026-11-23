@@ -1,3 +1,4 @@
+import type { HighlightColor, SavedHighlight } from './highlights.ts';
 import { readPosition } from './position.ts';
 import type { DocumentKind, ReadingPosition } from './readers';
 
@@ -24,6 +25,7 @@ export interface SavedDocument {
   updatedAt: number;
   notes: StudyNote[];
   bookmarks?: Bookmark[];
+  highlights?: SavedHighlight[];
 }
 
 const storageKey = 'openstudy.library.v1';
@@ -60,8 +62,21 @@ function readDocument(raw: unknown): SavedDocument | undefined {
     }
   }
 
+  const highlights: SavedHighlight[] = [];
+  if (Array.isArray(value.highlights)) {
+    for (const rawHighlight of value.highlights) {
+      if (!rawHighlight || typeof rawHighlight !== 'object') continue;
+      const highlight = rawHighlight as Record<string, unknown>;
+      const position = readPosition(highlight.position, kind);
+      if (typeof highlight.text !== 'string' || !highlight.text || !position) continue;
+      const color = highlight.color;
+      if (color !== 'sage' && color !== 'rose' && color !== 'slate') continue;
+      highlights.push({ text: highlight.text.slice(0, 500), color: color as HighlightColor, position });
+    }
+  }
+
   return {
-    path, name, title, kind, updatedAt, notes: readNotes, bookmarks,
+    path, name, title, kind, updatedAt, notes: readNotes, bookmarks, highlights,
     ...(value.online === true ? { online: true as const } : {}),
     position: readPosition(value.position, kind),
     label: typeof value.label === 'string' ? value.label : undefined,

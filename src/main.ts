@@ -4,6 +4,7 @@ import './bars.css';
 import { playLowBatteryChime, primeAlarm } from './alarm';
 import { batteryAlertLevel } from './battery';
 import { desktop, platform, type DocumentSelection } from './desktop';
+import { setHighlights, highlightColors, type SavedHighlight } from './highlights.ts';
 import { addReading, lastDays, loadHistory, normalizeHistory, saveHistory } from './history.ts';
 import { loadLibrary, normalizeLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
@@ -592,7 +593,17 @@ async function startSession(entry = selection?.document, position = entry?.posit
     await desktop.setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     openingDocument = true;
     bytes ??= await readSavedDocument(entry);
-    reader = await openReader(viewport, entry.kind, bytes, position, updateReading, undefined, settings.pdfContinuous);
+    setHighlights(entry.highlights ?? []);
+    reader = await openReader(viewport, entry.kind, bytes, position, updateReading, undefined, settings.pdfContinuous, (highlight) => {
+      const list = entry.highlights ??= [];
+      list.push(highlight);
+      if (!persist()) {
+        list.pop();
+        bookmarkFeedback('Could not save the highlight.');
+        return;
+      }
+      setHighlights(list);
+    });
     if (selection?.document === entry) selection.bytes = undefined;
     else showSelection(entry);
     timer = minutes > 0 ? new StudyTimer(minutes) : undefined;
@@ -729,12 +740,14 @@ async function readerAction(action: (active: Reader) => Promise<unknown>): Promi
 let notesEntry: SavedDocument | undefined;
 
 function exportNotes(): void {
-  if (!notesEntry || !notesEntry.notes.length && !notesEntry.bookmarks?.length) return;
+  if (!notesEntry || !notesEntry.notes.length && !notesEntry.bookmarks?.length && !notesEntry.highlights?.length) return;
   const bookmarks = notesEntry.bookmarks ?? [];
+  const highlights = notesEntry.highlights ?? [];
   const body = [
     `# Notes — ${notesEntry.title}`, '',
     ...notesEntry.notes.flatMap((note) => [`## ${note.label || 'Passage'}`, '', note.text, '']),
     ...(bookmarks.length ? ['## Bookmarks', '', ...bookmarks.map((bookmark) => `- ${bookmark.label}`), ''] : []),
+    ...(highlights.length ? ['## Highlights', '', ...highlights.map((highlight) => `- ${highlight.text}`), ''] : []),
   ].join('\n');
   const url = URL.createObjectURL(new Blob([body], { type: 'text/markdown;charset=utf-8' }));
   const link = document.createElement('a');
@@ -753,7 +766,7 @@ function showNotes(entry = selection?.document): void {
   const notes = entry.notes;
   list.replaceChildren();
   element('notes-empty').hidden = notes.length > 0;
-  button('export-notes').disabled = notes.length === 0 && !entry.bookmarks?.length;
+  button('export-notes').disabled = notes.length === 0 && !entry.bookmarks?.length && !entry.highlights?.length;
 
   async function jumpTo(position: ReadingPosition, label: string): Promise<void> {
     notesDialog.close();
@@ -794,6 +807,18 @@ function showNotes(entry = selection?.document): void {
     const row = document.createElement('li');
     row.append(jumpButton(bookmark.position, bookmark.label));
     bookmarkList.append(row);
+  }
+
+  const highlights = doc.highlights ?? [];
+  const highlightList = element('highlight-list');
+  highlightList.replaceChildren();
+  element('highlights-heading').hidden = highlights.length === 0;
+  for (const highlight of highlights) {
+    const row = document.createElement('li');
+    const text = document.createElement('p');
+    text.textContent = highlight.text;
+    row.append(text, jumpButton(highlight.position, highlight.color));
+    highlightList.append(row);
   }
 
   notesDialog.showModal();
@@ -1333,6 +1358,14 @@ button('add-bookmark').addEventListener('click', () => {
   }
   bookmarkFeedback('Bookmark saved');
 });
+
+for (const buttonEl of document.querySelectorAll<HTMLButtonElement>('.highlight-button')) {
+  buttonEl.addEventListener('click', () => {
+    const color = buttonEl.dataset.highlight as typeof highlightColors[number] | undefined;
+    if (!color || !highlightColors.includes(color)) return;
+    void readerAction((active) => active.highlight(color));
+  });
+}
 
 const noteText = element<HTMLTextAreaElement>('note-text');
 button('add-note').addEventListener('click', () => {

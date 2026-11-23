@@ -38,3 +38,9 @@
 ::highlight(openstudy-find) { background: #f6c453; color: #171717; }
 .pdf-page .textLayer *::highlight(openstudy-find) { background: #f6c45390; color: transparent; }
 .find-marker { position: absolute; z-index: 1; pointer-events: none; background: #f6c45390; mix-blend-mode: multiply; }
+::highlight(openstudy-sage) { background: #86a891; color: #102017; }
+::highlight(openstudy-rose) { background: #c98f8f; color: #201010; }
+::highlight(openstudy-slate) { background: #8fa6bd; color: #101820; }
+.pdf-page .textLayer *::highlight(openstudy-sage) { background: #86a89190; color: transparent; }
+.pdf-page .textLayer *::highlight(openstudy-rose) { background: #c98f8f90; color: transparent; }
+.pdf-page .textLayer *::highlight(openstudy-slate) { background: #8fa6bd90; color: transparent; }

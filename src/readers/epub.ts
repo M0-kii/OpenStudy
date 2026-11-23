@@ -3,6 +3,7 @@ import type Contents from 'epubjs/types/contents';
 import type { Location } from 'epubjs/types/rendition';
 import type Section from 'epubjs/types/section';
 import './readers.css';
+import { applyHighlights, highlightFromSelection, type HighlightColor, type SavedHighlight } from '../highlights.ts';
 import { flattenContents } from './contents';
 import { paperTheme } from '../paper.ts';
 import { emptyFindResult, findGroups, findPattern, groupedMatches, indexText, matchRange, selectMatch, type GroupMatch } from './find';
@@ -127,6 +128,7 @@ export async function openEpub(
   initial: EpubPosition | undefined,
   onChange: (state: ReaderState) => void,
   signal?: AbortSignal,
+  onHighlight?: (highlight: SavedHighlight) => void,
 ): Promise<Reader> {
   const book = await loadBook(bytes, signal);
   const sections: Section[] = [];
@@ -135,6 +137,7 @@ export async function openEpub(
   let layout = normalizeLayout(initial);
   let anchor = typeof initial?.cfi === 'string' && initial.cfi.startsWith('epubcfi(') ? initial.cfi : '';
   let state: ReaderState | undefined;
+  let activeContents: Contents | undefined;
   let sectionIndex = 0;
   let outline: Promise<ReaderContentsEntry[]> | undefined;
   let search: { query: string; match: GroupMatch } | undefined;
@@ -194,6 +197,7 @@ export async function openEpub(
   }
 
   function prepareContent(contents: Contents) {
+    activeContents = contents;
     const frame = contents.window.frameElement;
     frame?.setAttribute('title', 'EPUB page');
     const body = contents.document.body;
@@ -246,6 +250,7 @@ export async function openEpub(
     }
     const current = await rendition.currentLocation() as unknown as Location;
     relocated(current);
+    if (activeContents) applyHighlights(activeContents.document.body, activeContents.window);
   }
 
   async function setEpubLayout(changes: Partial<EpubLayout>) {
@@ -420,6 +425,14 @@ export async function openEpub(
       contents,
       find,
       clearFind,
+      highlight: async (color: HighlightColor) => {
+        const position = state?.position;
+        if (!activeContents || position?.kind !== 'epub') return;
+        const record = highlightFromSelection(color, position, activeContents.window);
+        if (!record) return;
+        onHighlight?.(record);
+        applyHighlights(activeContents.document.body, activeContents.window);
+      },
       destroy,
     };
   } catch (error) {

@@ -3,6 +3,7 @@ import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 import 'pdfjs-dist/web/pdf_viewer.css';
 import './readers.css';
+import { applyHighlights, highlightFromSelection, type HighlightColor, type SavedHighlight } from '../highlights.ts';
 import { flattenContents } from './contents';
 import { emptyFindResult, findGroups, findPattern, groupedMatches, highlightMatch, indexText, matchRange, selectMatch, type GroupMatch } from './find';
 import { bounded, type DocumentPreview, type FindDirection, type FindResult, type PdfFit, type PdfPosition, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
@@ -67,6 +68,7 @@ export async function openPdf(
   onChange: (state: ReaderState) => void,
   signal?: AbortSignal,
   continuous = false,
+  onHighlight?: (highlight: SavedHighlight) => void,
 ): Promise<Reader> {
   signal?.throwIfAborted();
   const loading = loadPdf(bytes);
@@ -146,6 +148,7 @@ export async function openPdf(
       canPrevious: current.page > 1,
       canNext: current.page < pdf.numPages,
     });
+    applyHighlights(stack, window);
   }
 
   function makeSlot(page: number): PageSlot {
@@ -498,6 +501,12 @@ export async function openPdf(
       contents,
       find,
       clearFind,
+      highlight: async (color: HighlightColor) => {
+        const record = highlightFromSelection(color, currentPosition());
+        if (!record) return;
+        onHighlight?.(record);
+        applyHighlights(stack, window);
+      },
       destroy,
     };
   } catch (error) {

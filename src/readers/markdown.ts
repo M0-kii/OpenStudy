@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import { applyHighlights, highlightFromSelection, type HighlightColor, type SavedHighlight } from '../highlights.ts';
 import './markdown.css';
 import './readers.css';
 import { emptyFindResult, findPattern, highlightMatch, indexText, matchRange, selectMatch, textMatches, type TextMatch } from './find';
@@ -85,6 +86,7 @@ export function openMarkdown(
   initial: MarkdownPosition | undefined,
   onChange: (state: ReaderState) => void,
   signal?: AbortSignal,
+  onHighlight?: (highlight: SavedHighlight) => void,
 ): Reader {
   signal?.throwIfAborted();
   const { tokens, title } = parseDocument(bytes);
@@ -100,6 +102,7 @@ export function openMarkdown(
   let unhighlight: (() => void) | undefined;
   let indexed: ReturnType<typeof indexText> | undefined;
   let currentHeading: HTMLElement | undefined;
+  let latestPosition: MarkdownPosition | undefined;
   host.replaceChildren(article);
 
   function scrollRange(): number {
@@ -129,12 +132,15 @@ export function openMarkdown(
     const range = scrollRange();
     const scroll = scrollFraction(range);
     currentHeading = headingAtTop();
+    latestPosition = { kind: 'markdown', scroll, zoom };
     onChange({
-      position: { kind: 'markdown', scroll, zoom },
+      position: latestPosition,
       label: currentHeading?.textContent?.trim().slice(0, 160) || `Document, ${Math.round(scroll * 100)}%`,
       canPrevious: host.scrollTop > 1,
       canNext: host.scrollTop < range - 1,
     });
+    const view = article.ownerDocument.defaultView;
+    if (view) applyHighlights(article, view);
   }
 
   function place(scroll: number | undefined, scale: number | undefined) {
@@ -228,6 +234,13 @@ export function openMarkdown(
     }),
     find,
     clearFind,
+    highlight: async (color: HighlightColor) => {
+      const record = highlightFromSelection(color, latestPosition);
+      if (!record) return;
+      onHighlight?.(record);
+      const view = article.ownerDocument.defaultView;
+      if (view) applyHighlights(article, view);
+    },
     destroy,
   };
 }

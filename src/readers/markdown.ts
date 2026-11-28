@@ -145,7 +145,9 @@ export function openMarkdown(
 
   function place(scroll: number | undefined, scale: number | undefined) {
     if (closed) return;
-    zoom = bounded(scale, 1, 0.65, 2.5);
+    const nextZoom = bounded(scale, 1, 0.65, 2.5);
+    if (nextZoom !== zoom) clearFind();
+    zoom = nextZoom;
     article.style.setProperty('--markdown-zoom', String(zoom));
     host.scrollTop = bounded(scroll, 0, 0, 1) * scrollRange();
     notify();

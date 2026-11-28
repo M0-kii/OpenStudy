@@ -44,7 +44,7 @@ const minutePresets = [0, 15, 25, 45, 60];
 const breakPresets = [0, 5, 10, 15];
 const cyclePresets = [0, 2, 3, 4];
 
-function normalize(value: unknown): StudySettings {
+export function normalizeSettings(value: unknown): StudySettings {
   if (value === null || typeof value !== 'object') return { ...defaults };
   const { defaultMinutes, showCountdown, pdfContinuous, sidebarCollapsed, theme, accent, paper, motion, breakMinutes, longBreakEvery, blockAppSwitching, batteryAlerts, batteryAlarm } = value as Partial<StudySettings>;
   return {
@@ -67,12 +67,12 @@ function normalize(value: unknown): StudySettings {
 export function loadSettings(storage?: Pick<Storage, 'getItem'>): StudySettings {
   try {
     const saved = (storage ?? localStorage).getItem(key);
-    return saved ? normalize(JSON.parse(saved)) : { ...defaults };
+    return saved ? normalizeSettings(JSON.parse(saved)) : { ...defaults };
   } catch {
     return { ...defaults };
   }
 }
 
 export function saveSettings(settings: StudySettings, storage: Pick<Storage, 'setItem'> = localStorage): void {
-  storage.setItem(key, JSON.stringify(normalize(settings)));
+  storage.setItem(key, JSON.stringify(normalizeSettings(settings)));
 }

@@ -130,11 +130,14 @@ fn linux_status(root: &std::path::Path) -> Option<BatteryStatus> {
             continue;
         }
 
-        let percent = attribute("capacity")
+        let Some(percent) = attribute("capacity")
             .trim()
             .parse::<u8>()
             .ok()
-            .filter(|p| *p <= 100)?;
+            .filter(|p| *p <= 100)
+        else {
+            continue;
+        };
         batteries += 1;
         percent_sum += u64::from(percent);
         if let Some(energy) = attribute("energy_full")
@@ -166,7 +169,7 @@ fn linux_status(root: &std::path::Path) -> Option<BatteryStatus> {
     };
     Some(BatteryStatus {
         percent,
-        charging: plugged || !discharging,
+        charging: plugged,
     })
 }
 
@@ -302,6 +305,29 @@ mod tests {
             "USB_PD",
             &[("type", "USB"), ("scope", "System"), ("online", "2")],
         );
+        assert!(linux_status(root).unwrap().charging);
+    }
+
+    #[test]
+    fn linux_ignores_a_bay_without_capacity_and_keeps_idle_packs_on_battery() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = fixture.path();
+        supply(
+            root,
+            "BAT0",
+            &[("type", "Battery"), ("capacity", "15"), ("status", "Not charging")],
+        );
+        supply(root, "BAT1", &[("type", "Battery"), ("status", "Full")]);
+        assert_eq!(
+            linux_status(root),
+            Some(BatteryStatus {
+                percent: 15,
+                charging: false
+            })
+        );
+        fs::write(root.join("BAT1/capacity"), "80").unwrap();
+        assert_eq!(linux_status(root).unwrap().percent, 47);
+        supply(root, "AC", &[("type", "Mains"), ("online", "1")]);
         assert!(linux_status(root).unwrap().charging);
     }
 }

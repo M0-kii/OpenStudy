@@ -10,7 +10,7 @@ export function primeAlarm(): void {
   }
 }
 
-export function playLowBatteryChime(): void {
+export function playChime(): void {
   const audio = context;
   if (!audio || audio.state !== 'running') return;
   const now = audio.currentTime;

@@ -45,10 +45,10 @@ export function applyHighlights(root: Element, view: Window): void {
       if (item.color !== color) continue;
       const pattern = findPattern(item.text);
       if (!pattern) continue;
-      const match = textMatches(index.text, pattern)[0];
-      if (!match) continue;
-      const range = matchRange(index, match);
-      if (range) marks.add(range);
+      for (const match of textMatches(index.text, pattern)) {
+        const range = matchRange(index, match);
+        if (range) marks.add(range);
+      }
     }
     target.CSS.highlights.set(`openstudy-${color}`, marks);
   }

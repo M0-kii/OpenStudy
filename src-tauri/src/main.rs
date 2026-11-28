@@ -5,7 +5,10 @@ use std::{
     fs::{self, File},
     io::Read,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex,
+    },
 };
 use tauri::{ipc::Response, AppHandle, Manager, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -18,6 +21,7 @@ mod switch_guard;
 const DOCUMENT_EXTENSIONS: [&str; 4] = ["pdf", "epub", "md", "markdown"];
 const MAX_DOCUMENT_BYTES: u64 = 256 * 1024 * 1024;
 static ACCESS_LOCK: Mutex<()> = Mutex::new(());
+static GRANTS_RESET: AtomicBool = AtomicBool::new(false);
 
 #[derive(serde::Serialize)]
 struct Selection {
@@ -27,7 +31,13 @@ struct Selection {
 
 fn read_grants(file: &Path) -> Result<BTreeSet<PathBuf>, String> {
     match fs::read(file) {
-        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|error| error.to_string()),
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(grants) => Ok(grants),
+            Err(_) => {
+                GRANTS_RESET.store(true, Ordering::Relaxed);
+                Ok(BTreeSet::new())
+            }
+        },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(BTreeSet::new()),
         Err(error) => Err(error.to_string()),
     }
@@ -57,6 +67,7 @@ fn register_selection(file: &Path, path: PathBuf) -> Result<(), String> {
         .sync_all()
         .map_err(|error| error.to_string())?;
     temporary.persist(file).map_err(|error| error.to_string())?;
+    GRANTS_RESET.store(false, Ordering::Relaxed);
     Ok(())
 }
 
@@ -105,7 +116,12 @@ async fn read_document(app: AppHandle, path: PathBuf) -> Result<Response, String
     tauri::async_runtime::spawn_blocking(move || {
         let path = canonical_document(&path)?;
         if !read_grants(&grant_file(&app)?)?.contains(&path) {
-            return Err("Choose this file to give OpenStudy access.".into());
+            return Err(if GRANTS_RESET.load(Ordering::Relaxed) {
+                "File access was reset after damaged data. Choose this file again."
+            } else {
+                "Choose this file to give OpenStudy access."
+            }
+            .into());
         }
 
         let file = File::open(path).map_err(|_| "This document could not be opened.")?;
@@ -158,9 +174,10 @@ fn set_study_fullscreen(
         .map_err(|error| error.to_string())?;
     #[cfg(windows)]
     if fullscreen && block_app_switching {
-        if let Ok(hwnd) = window.hwnd() {
-            switch_guard::enable(hwnd.0);
-        }
+        let hwnd = window
+            .hwnd()
+            .map_err(|error| format!("Could not block app switching: {error}"))?;
+        switch_guard::enable(hwnd.0);
     }
     Ok(())
 }
@@ -247,5 +264,16 @@ mod tests {
         let unsupported = directory.path().join("Unrelated.txt");
         fs::write(&unsupported, "test").unwrap();
         assert!(canonical_document(&unsupported).is_err());
+    }
+
+    #[test]
+    fn a_damaged_grant_file_starts_empty_and_is_repaired() {
+        let directory = tempfile::tempdir().unwrap();
+        let registry = directory.path().join("grants.json");
+        fs::write(&registry, "{not json").unwrap();
+        assert!(read_grants(&registry).unwrap().is_empty());
+        let path = directory.path().join("Paper.pdf");
+        register_selection(&registry, path.clone()).unwrap();
+        assert!(read_grants(&registry).unwrap().contains(&path));
     }
 }

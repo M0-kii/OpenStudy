@@ -7,9 +7,16 @@ export const paperColors: Record<Paper, { background: string; color: string; lin
 };
 
 let current: Paper = 'paper';
+const listeners = new Set<(paper: Paper) => void>();
 
 export function setPaper(paper: Paper): void {
   current = paper;
+  for (const listener of listeners) listener(paper);
+}
+
+export function onPaperChange(listener: (paper: Paper) => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
 }
 
 export function paperTheme(): typeof paperColors[Paper] {

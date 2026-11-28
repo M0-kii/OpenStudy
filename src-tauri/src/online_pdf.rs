@@ -1,7 +1,11 @@
 use crate::MAX_DOCUMENT_BYTES;
 use futures_util::future::{AbortHandle, AbortRegistration, Abortable};
 use reqwest::{header, redirect, Client, Url};
-use std::{sync::Mutex, time::Duration};
+use std::{
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
+    sync::Mutex,
+    time::Duration,
+};
 use tauri::{ipc::Response, Manager, Resource, ResourceId, WebviewWindow};
 
 const HEADER_LIMIT: usize = 1024;
@@ -28,6 +32,51 @@ fn allowed_url(url: &Url) -> bool {
         && url.password().is_none()
 }
 
+fn global_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            let [a, b, _, _] = ip.octets();
+            !(a == 0
+                || a == 10
+                || a == 127
+                || a == 169 && b == 254
+                || a == 172 && (16..=31).contains(&b)
+                || a == 192 && (b == 168 || b == 0)
+                || a == 100 && (64..=127).contains(&b)
+                || a == 198 && (b == 18 || b == 19 || b == 51)
+                || a == 203 && (b == 0 || b == 113)
+                || a >= 224)
+        }
+        IpAddr::V6(ip) => {
+            if let Some(ip) = ip.to_ipv4() {
+                return global_ip(IpAddr::V4(ip));
+            }
+            let segments = ip.segments();
+            !(ip.is_loopback()
+                || ip.is_unspecified()
+                || ip.is_multicast()
+                || segments[0] & 0xfe00 == 0xfc00
+                || segments[0] & 0xffc0 == 0xfe80)
+        }
+    }
+}
+
+fn public_host(url: &Url) -> Option<SocketAddr> {
+    let host = url.host_str()?;
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    let port = url
+        .port_or_known_default()
+        .unwrap_or(if url.scheme() == "https" { 443 } else { 80 });
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return global_ip(ip).then_some(SocketAddr::new(ip, port));
+    }
+    // shortcut: redirects are checked but not pinned; a rebind after a redirect is still possible.
+    (host.to_owned(), port)
+        .to_socket_addrs()
+        .ok()?
+        .find(|address| global_ip(address.ip()))
+}
+
 fn allowed_redirect(url: &Url, previous: &[Url]) -> bool {
     previous.len() <= MAX_REDIRECTS
         && allowed_url(url)
@@ -38,8 +87,13 @@ fn allowed_redirect(url: &Url, previous: &[Url]) -> bool {
 
 fn has_pdf_header(bytes: &[u8]) -> bool {
     bytes[..bytes.len().min(HEADER_LIMIT)]
-        .windows(5)
-        .any(|header| header == b"%PDF-")
+        .windows(8)
+        .any(|header| {
+            header.starts_with(b"%PDF-")
+                && header[5].is_ascii_digit()
+                && header[6] == b'.'
+                && header[7].is_ascii_digit()
+        })
 }
 
 fn download_error(error: reqwest::Error) -> String {
@@ -94,20 +148,30 @@ async fn download_pdf(url: &str) -> Result<Response, String> {
     if !allowed_url(&url) {
         return Err("Use an HTTP or HTTPS link without a username or password.".into());
     }
-    let client = Client::builder()
+    let pinned = public_host(&url)
+        .ok_or("Use a public HTTP or HTTPS link without a username or password.")?;
+    let host = url
+        .host_str()
+        .unwrap_or_default()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .to_owned();
+    let mut builder = Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .read_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(45))
         .referer(false)
         .redirect(redirect::Policy::custom(|attempt| {
-            if allowed_redirect(attempt.url(), attempt.previous()) {
+            if allowed_redirect(attempt.url(), attempt.previous()) && public_host(attempt.url()).is_some() {
                 attempt.follow()
             } else {
                 attempt.error("unsupported redirect")
             }
-        }))
-        .build()
-        .map_err(download_error)?;
+        }));
+    if host.parse::<IpAddr>().is_err() {
+        builder = builder.resolve(&host, pinned);
+    }
+    let client = builder.build().map_err(download_error)?;
     let mut response = client
         .get(url)
         .header(
@@ -166,7 +230,16 @@ mod tests {
             &Url::parse("https://user:secret@example.com/report").unwrap()
         ));
         assert!(!allowed_url(&Url::parse("file:///example.pdf").unwrap()));
+        assert_eq!(
+            public_host(&Url::parse("https://93.184.216.34/paper.pdf").unwrap()),
+            "93.184.216.34:443".parse::<SocketAddr>().ok()
+        );
+        assert!(public_host(&Url::parse("http://127.0.0.1:8080/").unwrap()).is_none());
+        assert!(public_host(&Url::parse("https://10.0.0.5/").unwrap()).is_none());
+        assert!(public_host(&Url::parse("http://169.254.1.1/").unwrap()).is_none());
+        assert!(public_host(&Url::parse("http://[::1]/").unwrap()).is_none());
         assert!(has_pdf_header(b"\n%PDF-1.7\n"));
+        assert!(!has_pdf_header(b"%PDF-error\n"));
         assert!(!has_pdf_header(b"<html>Not a PDF</html>"));
     }
 }

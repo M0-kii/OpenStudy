@@ -1,16 +1,16 @@
 import './design-system.css';
 import './style.css';
 import './bars.css';
-import { playLowBatteryChime, primeAlarm } from './alarm';
+import { playChime, primeAlarm } from './alarm';
 import { batteryAlertLevel } from './battery';
 import { desktop, platform, type DocumentSelection } from './desktop';
 import { setHighlights, highlightColors, type SavedHighlight } from './highlights.ts';
 import { addReading, lastDays, loadHistory, normalizeHistory, saveHistory } from './history.ts';
-import { loadLibrary, normalizeLibrary, reconnectDocument, saveLibrary, type SavedDocument } from './library';
+import { loadLibrary, normalizeLibrary, recoverLibrary, reconnectDocument, saveLibrary, takeLibraryWarning, type SavedDocument } from './library';
 import { openReader, previewDocument, type DocumentKind, type FindDirection, type FindResult, type PdfFit, type Reader, type ReaderContentsEntry, type ReaderState, type ReadingPosition } from './readers';
 import { FindLifecycle } from './readers/find-lifecycle.ts';
 import { setPaper } from './paper.ts';
-import { loadSettings, saveSettings, type StudySettings } from './settings';
+import { loadSettings, normalizeSettings, saveSettings, type StudySettings } from './settings';
 import { pdfFitMode, readingView } from './session.ts';
 import { applySettings, type SettingsControls } from './settings-view.ts';
 import { clockLabel, StudyTimer } from './timer';
@@ -142,7 +142,8 @@ let replacementLink: SavedDocument | undefined;
 let onlineRequest: AbortController | undefined;
 let retryOnline: (() => void) | undefined;
 let history = loadHistory();
-let readingSeconds = 0;
+let readingMark: number | undefined;
+let readingRemainder = 0;
 let batteryCheckPending = false;
 let batteryLevel = 0;
 let dismissedBatteryLevel = 0;
@@ -156,6 +157,32 @@ let reopenContents = false;
 function showError(node: HTMLElement, message = ''): void {
   if (node.textContent !== message) node.textContent = message;
   node.hidden = !message;
+}
+
+function accrueReading(now = performance.now()): void {
+  if (readingMark === undefined) return;
+  const elapsed = Math.min(60_000, Math.max(0, now - readingMark));
+  readingMark = now;
+  readingRemainder += elapsed / 1000;
+  const seconds = Math.floor(readingRemainder);
+  if (!seconds) return;
+  readingRemainder -= seconds;
+  history = addReading(history, seconds, selection?.document.title ?? 'Unknown');
+  try {
+    saveHistory(history);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function startReadingClock(): void {
+  readingMark = performance.now();
+  readingRemainder = 0;
+}
+
+function stopReadingClock(): void {
+  accrueReading();
+  readingMark = undefined;
 }
 
 function setScreen(next: Screen): void {
@@ -324,6 +351,7 @@ function readSavedDocument(entry: SavedDocument, signal?: AbortSignal): Promise<
 function documentError(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : error;
   if (error instanceof Error && error.name === 'PasswordException') return 'This PDF is password-protected. Choose an unlocked copy.';
+  if (typeof message === 'string' && message.includes('reset after damaged data')) return message;
   if (typeof message === 'string' && message.includes('smaller than 256 MB')) return 'Choose a document smaller than 256 MB.';
   return fallback;
 }
@@ -346,6 +374,7 @@ async function selectDocument(
   onError: (error: unknown) => void,
   replacement?: SavedDocument,
   onlineUrl?: string,
+  startPage?: number,
 ): Promise<boolean> {
   if (busy || activeSession()) return false;
   if (screen === 'settings') setScreen('launcher');
@@ -387,6 +416,7 @@ async function selectDocument(
       updatedAt: 0,
       notes: [],
     };
+    if (startPage && kind === 'pdf') saved.position = { kind: 'pdf', page: startPage, zoom: 1, scroll: 0, fit: 'auto' };
     if (repaired) {
       try {
         saveLibrary(repaired.library);
@@ -494,8 +524,9 @@ function updateClock(): void {
   if (remaining === 0 && !announced) {
     announced = true;
     completedBreaks++;
+    playChime();
     if (announcement) announcement.textContent = 'Study time is up.';
-  } else if (remaining === undefined && announcement) {
+  } else if (announcement && (remaining === undefined || (remaining > 0 && announcement.textContent))) {
     announcement.textContent = '';
   }
 }
@@ -516,7 +547,7 @@ async function checkBattery(): Promise<void> {
         : `Battery at ${status.percent}%. Plug in when you can.`;
       if (element('battery-message').textContent !== message) element('battery-message').textContent = message;
       if (settings.batteryAlarm && batteryLevel > alarmedBatteryLevel) {
-        playLowBatteryChime();
+        playChime();
         alarmedBatteryLevel = batteryLevel;
       }
     }
@@ -614,6 +645,7 @@ async function startSession(entry = selection?.document, position = entry?.posit
     timer = minutes > 0 ? new StudyTimer(minutes) : undefined;
     announced = false;
     timer?.resume(performance.now());
+    startReadingClock();
     updateClock();
     persist();
     void checkBattery();
@@ -661,6 +693,7 @@ async function takeBreak(): Promise<void> {
   setBusy(true);
   showError(breakError);
   timer?.pause(performance.now());
+  stopReadingClock();
   const saved = persist();
   try {
     await desktop.setFullscreen(false);
@@ -693,6 +726,7 @@ async function resumeSession(): Promise<boolean> {
     await desktop.setFullscreen(true, os === 'windows' && settings.blockAppSwitching);
     setScreen('reader');
     await reader?.setPdfContinuous(settings.pdfContinuous);
+    readingMark = performance.now();
     timer?.resume(performance.now());
     updateClock();
     void checkBattery();
@@ -717,8 +751,14 @@ async function endSession(): Promise<void> {
   if ((screen !== 'reader' && screen !== 'break') || busy || readerBusy) return;
   setBusy(true);
   try {
+    stopReadingClock();
     if (screen === 'reader') await desktop.setFullscreen(false);
-    const saved = persist();
+    if (!persist()) {
+      showError(screen === 'break' ? breakError : readerError, screen === 'break'
+        ? 'OpenStudy could not save your reading progress. Resume and try again.'
+        : 'OpenStudy could not save your reading progress. Try again.');
+      return;
+    }
     reader?.destroy();
     reader = undefined;
     reading = undefined;
@@ -731,7 +771,7 @@ async function endSession(): Promise<void> {
     renderLibrary();
     setScreen('launcher');
     updateClock();
-    showError(launcherError, saved ? '' : 'OpenStudy could not save your reading progress.');
+    showError(launcherError);
   } catch (error) {
     console.error(error);
     showError(screen === 'break' ? breakError : readerError, 'Could not end this session. You can still close OpenStudy.');
@@ -794,7 +834,7 @@ function showNotes(entry = selection?.document): void {
   element('notes-empty').hidden = notes.length > 0;
   button('export-notes').disabled = notes.length === 0 && !entry.bookmarks?.length && !entry.highlights?.length;
 
-  async function jumpTo(position: ReadingPosition, label: string): Promise<void> {
+  async function jumpTo(position: ReadingPosition): Promise<void> {
     notesDialog.close();
     if (screen === 'launcher') {
       const target = position.kind === 'pdf' && doc.position?.kind === 'pdf'
@@ -813,7 +853,7 @@ function showNotes(entry = selection?.document): void {
     jump.type = 'button';
     jump.className = 'quiet-button';
     jump.textContent = screen === 'launcher' ? `Study from ${label}` : `Go to ${label}`;
-    jump.addEventListener('click', () => void jumpTo(position, label));
+    jump.addEventListener('click', () => void jumpTo(position));
     return jump;
   }
 
@@ -1016,6 +1056,8 @@ element('link-form').addEventListener('submit', async (event) => {
     showError(linkError, 'Enter an HTTP or HTTPS PDF link without a username or password.');
     return;
   }
+  const pageFragment = /^#page=(\d+)$/i.exec(url.hash);
+  const startPage = pageFragment ? Math.max(1, Math.min(1_000_000, Number(pageFragment[1]))) : undefined;
   url.hash = '';
   const segment = url.pathname.split('/').filter(Boolean).pop() ?? url.hostname;
   let name = segment;
@@ -1029,7 +1071,7 @@ element('link-form').addEventListener('submit', async (event) => {
   }), (error) => {
     showError(linkError, documentError(error, 'Could not open this PDF link. Check that it opens a PDF directly.'));
     submit.textContent = 'Retry';
-  }, replacementLink, url.href);
+  }, replacementLink, url.href, startPage);
   linkInput.readOnly = submit.disabled = false;
   showError(element('link-status'));
   if (opened) {
@@ -1075,8 +1117,6 @@ readerPage.addEventListener('blur', (event) => {
 });
 readerProgress.addEventListener('input', () => {
   readerProgress.setAttribute('aria-valuetext', `Page ${readerProgress.value} of ${readerProgress.max}`);
-});
-readerProgress.addEventListener('input', () => {
   readerProgress.style.setProperty('--control-value', readerProgress.value);
 });
 readerProgress.addEventListener('change', () => void jumpToPdfPage(readerProgress.valueAsNumber));
@@ -1469,10 +1509,17 @@ importFile.addEventListener('change', async () => {
   const status = element('library-backup-status');
   try {
     const parsed: unknown = JSON.parse(await file.text());
-    const payload = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+    if (!parsed || typeof parsed !== 'object' || (parsed as Record<string, unknown>).version !== 1) throw new Error('Unsupported export version');
+    const payload = parsed as Record<string, unknown>;
     const incoming = normalizeLibrary(payload.library);
+    const libraryWarning = takeLibraryWarning();
     const known = new Set(library.map((entry) => entry.path));
-    const added = incoming.filter((entry) => !known.has(entry.path));
+    const added: SavedDocument[] = [];
+    for (const entry of incoming) {
+      if (known.has(entry.path)) continue;
+      known.add(entry.path);
+      added.push(entry);
+    }
     library = [...library, ...added];
     saveLibrary(library);
 
@@ -1488,8 +1535,14 @@ importFile.addEventListener('change', async () => {
     history = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-365);
     saveHistory(history);
 
+    if (payload.settings && typeof payload.settings === 'object' && !Array.isArray(payload.settings)) {
+      settings = normalizeSettings(payload.settings);
+      try { saveSettings(settings); } catch (error) { console.error(error); }
+      applySettings(settings, controls);
+    }
+
     renderLibrary();
-    status.textContent = `Imported ${added.length} document${added.length === 1 ? '' : 's'}.`;
+    status.textContent = `Imported ${added.length} document${added.length === 1 ? '' : 's'}.${libraryWarning ? ` ${libraryWarning}` : ''}`;
   } catch {
     status.textContent = 'That file could not be read as a library export.';
   }
@@ -1699,14 +1752,20 @@ document.addEventListener('keydown', (event) => {
     button('choose-file').click();
   }
 });
-window.addEventListener('pagehide', persist);
+window.addEventListener('pagehide', () => { stopReadingClock(); persist(); });
 if (os === 'browser') {
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement) void takeBreak();
   });
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) persist();
+  if (document.hidden) {
+    if (screen === 'reader') accrueReading();
+    readingMark = undefined;
+    persist();
+  } else if (screen === 'reader' && reading) {
+    readingMark = performance.now();
+  }
 });
 
 let dragDepth = 0;
@@ -1750,25 +1809,24 @@ setInterval(updateBreakClock, 1000);
 setInterval(() => void checkBattery(), 30_000);
 setInterval(() => {
   if (screen !== 'reader' || document.hidden || !reading) return;
-  readingSeconds += 15;
-  if (readingSeconds < 60) return;
-  const minutes = Math.floor(readingSeconds / 60);
-  readingSeconds -= minutes * 60;
-  history = addReading(history, minutes * 60, selection?.document.title ?? 'Unknown');
-  try {
-    saveHistory(history);
-  } catch (error) {
-    console.error(error);
-  }
+  accrueReading();
 }, 15_000);
 
 setScreen('launcher');
 try {
   library = loadLibrary();
   renderLibrary();
+  const libraryWarning = takeLibraryWarning();
+  if (libraryWarning) showError(launcherError, libraryWarning);
 } catch (error) {
   console.error(error);
-  canSave = false;
-  showError(launcherError, 'OpenStudy could not load your reading history.');
+  try {
+    recoverLibrary();
+    showError(launcherError, 'OpenStudy recovered from damaged reading history. A backup was kept under openstudy.library.v1.damaged.');
+  } catch (repairError) {
+    console.error(repairError);
+    canSave = false;
+    showError(launcherError, 'OpenStudy could not load your reading history.');
+  }
 }
 setBusy(false);

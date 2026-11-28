@@ -75,6 +75,8 @@ export async function openPdf(
   const pdf = await load();
   const stack = document.createElement('div');
   stack.className = 'pdf-stack';
+  const spacer = document.createElement('div');
+  spacer.setAttribute('aria-hidden', 'true');
   const pageInset = 20;
   const bottomInset = 30;
   const horizontalInset = 56;
@@ -152,12 +154,33 @@ export async function openPdf(
   }
 
   function makeSlot(page: number): PageSlot {
+    return { page, top: 0, width: 0 };
+  }
+
+  function slotHeight(slot: PageSlot): number {
+    return slot.width * aspectRatio(slot.page);
+  }
+
+  function ensureAttached(slot: PageSlot): HTMLElement {
+    if (slot.element) return slot.element;
     const element = document.createElement('article');
     element.className = 'pdf-page';
-    element.setAttribute('aria-label', `Page ${page}`);
+    element.setAttribute('aria-label', `Page ${slot.page}`);
     element.setAttribute('aria-hidden', 'true');
-    element.dataset.page = String(page);
-    return { page, element, width: 0 };
+    element.dataset.page = String(slot.page);
+    if (continuous) {
+      element.style.position = 'absolute';
+      element.style.margin = '0 auto';
+      element.style.left = '0';
+      element.style.right = '0';
+    }
+    slot.element = element;
+    sizeSlot(slot);
+    if (continuous) element.style.top = `${pageInset + slot.top}px`;
+    const next = slots.find((other) => other.page > slot.page && other.element);
+    if (next?.element) stack.insertBefore(element, next.element);
+    else stack.insertBefore(element, spacer);
+    return element;
   }
 
   function aspectRatio(page: number): number {
@@ -169,12 +192,24 @@ export async function openPdf(
     const availableHeight = Math.max(1, stackHeight - pageInset - bottomInset);
     slot.width = stackFit === 'page' ? Math.min(baseWidth, availableHeight / ratio)
       : baseWidth * (stackFit === 'custom' ? stackZoom : 1);
-    slot.element.style.width = `${slot.width}px`;
-    slot.element.style.height = `${slot.width * ratio}px`;
+    if (slot.element) {
+      slot.element.style.width = `${slot.width}px`;
+      slot.element.style.height = `${slot.width * ratio}px`;
+    }
+  }
+
+  function layoutTops() {
+    let top = 0;
+    for (const slot of slots) {
+      slot.top = top;
+      if (slot.element && continuous) slot.element.style.top = `${pageInset + top}px`;
+      top += slotHeight(slot) + (continuous ? 24 : 0);
+    }
+    spacer.style.height = `${continuous ? Math.max(0, top) : 0}px`;
   }
 
   function slotTop(slot: PageSlot): number {
-    return slot.element.offsetTop - pageInset;
+    return slot.top;
   }
 
   function indexAt(y: number): number {
@@ -192,7 +227,7 @@ export async function openPdf(
     if (!slots.length || host.scrollTop === pinnedScroll || !host.clientHeight) return position;
     const slot = slots[indexAt(host.scrollTop)];
     const zoom = stackFit === 'custom' ? position.zoom : slot.width / baseWidth;
-    return normalize(slot.page, zoom, (host.scrollTop - slotTop(slot)) / Math.max(1, slot.element.offsetHeight));
+    return normalize(slot.page, zoom, (host.scrollTop - slotTop(slot)) / Math.max(1, slotHeight(slot)));
   }
 
   function pin(next: PdfPosition) {
@@ -200,9 +235,9 @@ export async function openPdf(
     const last = slots[slots.length - 1];
     const zoom = stackFit === 'custom' ? next.zoom : slot.width / baseWidth;
     const scroll = !continuous && stackFit === 'page' ? 0 : next.scroll;
-    const top = Math.round(slotTop(slot) + scroll * slot.element.offsetHeight);
+    const top = Math.round(slotTop(slot) + scroll * slotHeight(slot));
     const lastTop = slotTop(last);
-    const end = last.element.offsetTop + last.element.offsetHeight;
+    const end = lastTop + slotHeight(last);
     // Leave enough room to align short last pages and restore a deep anchor in single-page mode.
     stack.style.paddingBottom = `${Math.max(bottomInset, Math.max(lastTop, top) + host.clientHeight - end)}px`;
     host.scrollTop = top;
@@ -215,8 +250,9 @@ export async function openPdf(
     slot.drawing?.task?.cancel();
     slot.drawing?.textLayer?.cancel();
     slot.drawing = undefined;
-    slot.element.replaceChildren();
-    slot.element.setAttribute('aria-hidden', 'true');
+    slot.element?.replaceChildren();
+    slot.element?.remove();
+    slot.element = undefined;
     resident.delete(slot);
   }
 
@@ -225,6 +261,7 @@ export async function openPdf(
     const drawing: PageDrawing = { finished: Promise.resolve() };
     slot.drawing = drawing;
     resident.add(slot);
+    ensureAttached(slot);
     drawing.finished = paintSlot(slot, drawing);
     return drawing.finished;
   }
@@ -238,12 +275,13 @@ export async function openPdf(
       if (ratio !== aspectRatio(slot.page)) {
         const anchor = currentPosition();
         pageRatios.set(slot.page, ratio);
-        sizeSlot(slot);
+        for (const other of slots) sizeSlot(other);
+        layoutTops();
         pin(anchor);
         scheduleVisible();
       }
       const { canvas, task, viewport } = pageCanvas(page, slot.width / natural.width, window.devicePixelRatio || 1);
-      const article = slot.element;
+      const article = slot.element!;
       article.style.setProperty('--scale-factor', String(viewport.scale));
       article.style.setProperty('--user-unit', String(page.userUnit));
       article.style.setProperty('--total-scale-factor', String(viewport.scale * page.userUnit));
@@ -265,8 +303,8 @@ export async function openPdf(
       const message = document.createElement('p');
       message.className = 'pdf-page-error';
       message.textContent = `Page ${slot.page} could not be displayed.`;
-      slot.element.replaceChildren(message);
-      slot.element.removeAttribute('aria-hidden');
+      slot.element!.replaceChildren(message);
+      slot.element!.removeAttribute('aria-hidden');
       throw error;
     }
   }
@@ -282,7 +320,9 @@ export async function openPdf(
       const bottom = top + host.clientHeight;
       const last = Math.min(indexAt(bottom + overscan), Math.max(indexAt(bottom), first + 11));
       for (const slot of resident) if (slot.page - 1 < first || slot.page - 1 > last) release(slot);
-      for (let index = first; index <= last; index++) void draw(slots[index]).catch(() => {});
+      const drawn: Promise<void>[] = [];
+      for (let index = first; index <= last; index++) drawn.push(draw(slots[index]).catch(() => {}));
+      void Promise.all(drawn).then(() => { if (!closed) applyHighlights(stack, window); });
     });
   }
 
@@ -309,20 +349,18 @@ export async function openPdf(
     if (rebuild) {
       slots = continuous ? Array.from({ length: pdf.numPages }, (_, index) => makeSlot(index + 1)) : [makeSlot(next.page)];
       stackContinuous = continuous;
+      stack.replaceChildren(spacer);
+      if (!stack.isConnected) host.replaceChildren(stack);
     }
     if (rebuild || resize) {
       for (const slot of slots) sizeSlot(slot);
-    }
-    if (rebuild) {
-      const pages = document.createDocumentFragment();
-      for (const slot of slots) pages.append(slot.element);
-      stack.replaceChildren(pages);
-      if (!stack.isConnected) host.replaceChildren(stack);
+      layoutTops();
     }
     if (position.page !== next.page) host.scrollLeft = 0;
     pin(next);
     scheduleVisible();
     await draw(slots[continuous ? next.page - 1 : 0]);
+    applyHighlights(stack, window);
   }
 
   function destroy() {
@@ -353,11 +391,11 @@ export async function openPdf(
 
   function markMatch(slot: PageSlot): Range | undefined {
     if (!search || search.match.group + 1 !== slot.page) return undefined;
-    const layer = slot.element.querySelector('.textLayer');
+    const layer = slot.element?.querySelector('.textLayer');
     const range = layer && matchRange(indexText(layer, true), search.match);
     if (!range) return undefined;
     unhighlight?.();
-    unhighlight = highlightMatch(range, slot.element);
+    unhighlight = highlightMatch(range, slot.element!);
     return range;
   }
 
@@ -406,8 +444,8 @@ export async function openPdf(
       const slot = slots[continuous ? group : 0];
       const range = markMatch(slot);
       if (range) {
-        const relativeTop = range.getBoundingClientRect().top - slot.element.getBoundingClientRect().top - host.clientHeight / 4;
-        pin(normalize(pageNumber, position.zoom, relativeTop / Math.max(1, slot.element.offsetHeight)));
+        const relativeTop = range.getBoundingClientRect().top - slot.element!.getBoundingClientRect().top - host.clientHeight / 4;
+        pin(normalize(pageNumber, position.zoom, relativeTop / Math.max(1, slotHeight(slot))));
         scheduleVisible();
       }
       const result = index.result(selected);
@@ -484,7 +522,7 @@ export async function openPdf(
     return {
       previous: () => step(-1),
       next: () => step(1),
-      goTo: async (target) => { if (target.kind === 'pdf') await display(normalize(target.page, position.zoom, target.scroll)); },
+      goTo: async (target) => { if (target.kind === 'pdf') await display(normalize(target.page, target.zoom, target.scroll, target.fit ?? position.fit)); },
       zoom: (delta) => {
         const current = currentPosition();
         return display(normalize(current.page, current.zoom * 1.18 ** delta, current.scroll, 'custom'));
@@ -517,8 +555,9 @@ export async function openPdf(
 
 interface PageSlot {
   page: number;
-  element: HTMLElement;
+  top: number;
   width: number;
+  element?: HTMLElement;
   drawing?: PageDrawing;
 }
 

@@ -5,7 +5,7 @@ import type Section from 'epubjs/types/section';
 import './readers.css';
 import { applyHighlights, highlightFromSelection, type HighlightColor, type SavedHighlight } from '../highlights.ts';
 import { flattenContents } from './contents';
-import { paperTheme } from '../paper.ts';
+import { onPaperChange, paperTheme } from '../paper.ts';
 import { emptyFindResult, findGroups, findPattern, groupedMatches, indexText, matchRange, selectMatch, type GroupMatch } from './find';
 import { bounded, epubDefaults, type DocumentPreview, type EpubLayout, type EpubPosition, type FindDirection, type FindResult, type Reader, type ReaderContentsEntry, type ReaderState } from './index';
 
@@ -58,6 +58,7 @@ function sanitizeChapter(doc: Document) {
   head.prepend(policy);
 
   const css = doc.createElementNS(head.namespaceURI, 'style');
+  css.setAttribute('data-openstudy-paper', '');
   css.textContent = chapterStyle();
   head.append(css);
 }
@@ -160,6 +161,13 @@ export async function openEpub(
     allowScriptedContent: false,
   });
   const observer = new ResizeObserver(resize);
+  const unsubscribePaper = onPaperChange(() => {
+    if (closed) return;
+    for (const content of rendition.getContents() as unknown as Contents[]) {
+      const style = content.document.querySelector<HTMLStyleElement>('style[data-openstudy-paper]');
+      if (style) style.textContent = chapterStyle();
+    }
+  });
 
   function measure() {
     return {
@@ -394,6 +402,7 @@ export async function openEpub(
     if (closed) return;
     closed = true;
     signal?.removeEventListener('abort', destroy);
+    unsubscribePaper();
     observer.disconnect();
     rendition.off('relocated', relocated);
     clearFind();

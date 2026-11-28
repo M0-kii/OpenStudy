@@ -29,6 +29,19 @@ export interface SavedDocument {
 }
 
 const storageKey = 'openstudy.library.v1';
+const backupKey = 'openstudy.library.v1.damaged';
+let skippedEntries = 0;
+
+function skipEntry(): void {
+  skippedEntries++;
+}
+
+export function takeLibraryWarning(): string | undefined {
+  if (!skippedEntries) return undefined;
+  const count = skippedEntries;
+  skippedEntries = 0;
+  return `OpenStudy skipped ${count} saved item${count === 1 ? '' : 's'} with unreadable data.`;
+}
 
 function readDocument(raw: unknown): SavedDocument | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
@@ -40,20 +53,20 @@ function readDocument(raw: unknown): SavedDocument | undefined {
 
   const readNotes: StudyNote[] = [];
   for (const rawNote of notes) {
-    if (!rawNote || typeof rawNote !== 'object') continue;
+    if (!rawNote || typeof rawNote !== 'object') { skipEntry(); continue; }
     const note = rawNote as Record<string, unknown>;
     const position = readPosition(note.position, kind);
-    if (typeof note.text !== 'string' || !position) continue;
+    if (typeof note.text !== 'string' || !position) { skipEntry(); continue; }
     readNotes.push({ text: note.text, position, label: typeof note.label === 'string' ? note.label : '' });
   }
 
   const bookmarks: Bookmark[] = [];
   if (Array.isArray(value.bookmarks)) {
     for (const rawBookmark of value.bookmarks) {
-      if (!rawBookmark || typeof rawBookmark !== 'object') continue;
+      if (!rawBookmark || typeof rawBookmark !== 'object') { skipEntry(); continue; }
       const bookmark = rawBookmark as Record<string, unknown>;
       const position = readPosition(bookmark.position, kind);
-      if (!position) continue;
+      if (!position) { skipEntry(); continue; }
       bookmarks.push({
         position,
         label: typeof bookmark.label === 'string' ? bookmark.label : '',
@@ -65,12 +78,12 @@ function readDocument(raw: unknown): SavedDocument | undefined {
   const highlights: SavedHighlight[] = [];
   if (Array.isArray(value.highlights)) {
     for (const rawHighlight of value.highlights) {
-      if (!rawHighlight || typeof rawHighlight !== 'object') continue;
+      if (!rawHighlight || typeof rawHighlight !== 'object') { skipEntry(); continue; }
       const highlight = rawHighlight as Record<string, unknown>;
       const position = readPosition(highlight.position, kind);
-      if (typeof highlight.text !== 'string' || !highlight.text || !position) continue;
+      if (typeof highlight.text !== 'string' || !highlight.text || !position) { skipEntry(); continue; }
       const color = highlight.color;
-      if (color !== 'sage' && color !== 'rose' && color !== 'slate') continue;
+      if (color !== 'sage' && color !== 'rose' && color !== 'slate') { skipEntry(); continue; }
       highlights.push({ text: highlight.text.slice(0, 500), color: color as HighlightColor, position });
     }
   }
@@ -85,6 +98,7 @@ function readDocument(raw: unknown): SavedDocument | undefined {
 
 export function normalizeLibrary(raw: unknown): SavedDocument[] {
   if (!Array.isArray(raw)) throw new Error('Invalid library');
+  skippedEntries = 0;
   return raw.map(readDocument).filter((entry): entry is SavedDocument => Boolean(entry));
 }
 
@@ -96,6 +110,12 @@ export function loadLibrary(): SavedDocument[] {
 
 export function saveLibrary(library: SavedDocument[]): void {
   localStorage.setItem(storageKey, JSON.stringify(library));
+}
+
+export function recoverLibrary(): void {
+  const damaged = localStorage.getItem(storageKey);
+  if (damaged) localStorage.setItem(backupKey, damaged);
+  saveLibrary([]);
 }
 
 export function reconnectDocument(

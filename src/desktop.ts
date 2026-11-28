@@ -91,7 +91,7 @@ async function downloadPdf(url: string, signal?: AbortSignal): Promise<ArrayBuff
   try {
     const response = await fetch(address, {
       credentials: 'omit',
-      redirect: 'error',
+      redirect: 'follow',
       referrerPolicy: 'no-referrer',
       signal: abort.signal,
     });
@@ -116,7 +116,7 @@ async function downloadPdf(url: string, signal?: AbortSignal): Promise<ArrayBuff
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    if (!new TextDecoder().decode(bytes.subarray(0, 1024)).includes('%PDF-')) {
+    if (!/%PDF-\d\.\d/.test(new TextDecoder().decode(bytes.subarray(0, 1024)))) {
       throw new Error('This URL did not return a PDF.');
     }
     return bytes.buffer;

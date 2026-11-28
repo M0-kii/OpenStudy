@@ -30,7 +30,7 @@ export function readPosition(raw: unknown, kind: DocumentKind): ReadingPosition 
   }
 
   const { cfi, fontSize, lineHeight, width } = value;
-  if (typeof cfi !== 'string' || !cfi.startsWith('epubcfi(')) return undefined;
+  if (typeof cfi !== 'string' || !cfi.startsWith('epubcfi(') || !cfi.endsWith(')')) return undefined;
   if (!finite(fontSize) || fontSize <= 0 || !finite(lineHeight) || lineHeight <= 0 || !finite(width) || width <= 0) return undefined;
   return { kind: 'epub', cfi, fontSize, lineHeight, width };
 }

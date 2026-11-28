@@ -71,6 +71,9 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Verify the requested release tag
         if: inputs.release_tag != ''
         shell: bash
@@ -134,6 +137,8 @@ jobs:
           if [[ "$draft" == true ]]; then
             gh release upload "$tag" --clobber "${assets[@]}"
             gh release edit "$tag" --draft=false
-          elif [[ "$draft" != false ]]; then
+          elif [[ "$draft" == false ]]; then
+            gh release upload "$tag" --clobber "${assets[@]}"
+          else
             gh release create "$tag" --verify-tag --title "OpenStudy ${tag#v}" --notes-from-tag "${assets[@]}"
           fi
